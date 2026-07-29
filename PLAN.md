@@ -7,20 +7,41 @@ Konteks & alasan proyek ini ada di [SUMMARY.md](SUMMARY.md).
 
 ---
 
-## Fase 0 — Scaffold & Tooling
+## Fase 0 — Scaffold & Tooling ✅
 
 **Tujuan:** project SvelteKit jalan di `localhost:5173` dengan halaman kosong.
 
-- [ ] `npx sv create .` di folder ini (SvelteKit minimal, TypeScript, tanpa demo)
-- [ ] Install: `@supabase/supabase-js`, `@supabase/ssr`, `tailwindcss`, `@sveltejs/adapter-vercel`
-- [ ] Setup Tailwind (`npx sv add tailwindcss`)
-- [ ] `git init` + `.gitignore` — pastikan `.env` masuk gitignore **sebelum** commit pertama
-- [ ] `.env.example` berisi nama variabel saja, tanpa nilai
-- [ ] Setup Prettier + ESLint
-- [ ] Commit pertama
+- [x] `npx sv create .` di folder ini (SvelteKit minimal, TypeScript, tanpa demo)
+- [x] Install: `@supabase/supabase-js`, `@supabase/ssr`, `tailwindcss`, `@sveltejs/adapter-vercel`
+- [x] Setup Tailwind (`npx sv add tailwindcss`) — plugin `typography` (untuk preview
+      markdown di Fase 4) dan `forms` (untuk form login di Fase 2)
+- [x] `git init` + `.gitignore` — pastikan `.env` masuk gitignore **sebelum** commit pertama
+- [x] `.env.example` berisi nama variabel saja, tanpa nilai
+- [x] Setup Prettier + ESLint
+- [x] Commit pertama
+- [x] `src/app.d.ts` — tipe `App.Locals` disiapkan lebih awal untuk Fase 2
+- [x] `.gitattributes` — normalisasi line ending (repo ini diedit dari macOS & Windows)
 
 **Selesai kalau:** `npm run dev` buka halaman kosong tanpa error, `git status` bersih,
 dan `.env` tidak muncul di `git status`.
+
+### Catatan: `npm run build` gagal di Windows
+
+`adapter-vercel` membuat symlink saat build, dan Windows menolaknya dengan `EPERM`
+kecuali Developer Mode aktif atau terminal dijalankan sebagai admin. **Ini bukan bug
+kode** — build dengan `adapter-node` sukses, dan di Vercel (Linux) build berjalan normal.
+
+Kalau ingin `npm run build` jalan lokal: Settings → System → For developers →
+Developer Mode = ON, lalu buka ulang terminal.
+
+### Catatan: `npm audit` melaporkan 3 low severity
+
+CVE pada paket `cookie` (<0.7.0), transitif dari `@sveltejs/kit`. Kit `2.70.1` sudah
+versi terbaru dan masih mem-pin `cookie@0.6.0`, jadi belum ada fix upstream.
+**Jangan jalankan `npm audit fix --force`** — perintah itu men-downgrade Kit ke
+`0.0.30` dan merusak project. Kerentanannya soal parsing nama/path cookie yang
+di luar rentang karakter; tidak terjangkau lewat jalur input aplikasi ini. Tinjau
+ulang saat Kit merilis versi dengan `cookie` yang sudah di-patch.
 
 ---
 

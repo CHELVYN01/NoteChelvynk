@@ -16,7 +16,14 @@ Changelog pekerjaan yang sudah selesai. Terbaru di atas.
 
 [30/07/2026]
 
-- docs : summary, plan, claude.md, dan list_done (belum di-commit)
+- add : scaffold SvelteKit 2 + Svelte 5 runes, TypeScript strict (8c5f21d)
+- add : Tailwind 4 dengan plugin typography & forms (8c5f21d)
+- add : adapter-vercel, Prettier, ESLint (8c5f21d)
+- add : dependency Supabase (@supabase/supabase-js, @supabase/ssr) (8c5f21d)
+- add : tipe App.Locals termasuk kontrak safeGetSession, disiapkan untuk Fase 2 (8c5f21d)
+- add : .gitattributes normalisasi line ending untuk kerja lintas macOS/Windows (8c5f21d)
+- security : .env masuk .gitignore & diverifikasi tidak ikut ter-stage (8c5f21d)
+- docs : summary, plan, claude.md, list_done, dan README (8c5f21d)
 
 ---
 
