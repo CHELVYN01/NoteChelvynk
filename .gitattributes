@@ -1,0 +1,4 @@
+# Normalize line endings. This repo is edited from both macOS and Windows;
+# without this, every file rewritten on the other machine shows up as a
+# whole-file diff.
+* text=auto eol=lf
