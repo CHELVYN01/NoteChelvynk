@@ -45,17 +45,17 @@ ulang saat Kit merilis versi dengan `cookie` yang sudah di-patch.
 
 ---
 
-## Fase 1 — Supabase Setup & Skema Database
+## Fase 1 — Supabase Setup & Skema Database ✅
 
 **Tujuan:** database siap dengan tabel, index, dan RLS aktif.
 
-- [ ] Buat project Supabase, catat URL + anon key ke `.env`
-- [ ] **Matikan signup** di Dashboard → Authentication → Providers → Email →
+- [x] Buat project Supabase, catat URL + anon key ke `.env`
+- [x] **Matikan signup** di Dashboard → Authentication → Providers → Email →
       _Enable Signups_ = OFF
-- [ ] Buat akun owner manual lewat Dashboard → Authentication → Users → Add User
-- [ ] Jalankan migration SQL (skema di bawah)
-- [ ] **Verifikasi RLS**: buka SQL Editor, `SELECT * FROM notes;` sebagai anon —
-      harus mengembalikan 0 baris, bukan error dan bukan data
+- [x] Buat akun owner manual lewat Dashboard → Authentication → Users → Add User
+- [x] Jalankan migration SQL (skema di bawah)
+- [x] **Verifikasi RLS**: `GET /rest/v1/notes` sebagai anon — mengembalikan
+      `200 []`, bukan error dan bukan data
 
 ### Skema
 
@@ -144,6 +144,25 @@ create trigger notes_updated_at
 
 **Selesai kalau:** ketiga tabel ada, RLS aktif di semua tabel, dan query anon
 mengembalikan 0 baris.
+
+### Catatan: perlu `GRANT` eksplisit karena "Automatically expose new tables" = OFF
+
+Project ini dibuat dengan toggle **"Automatically expose new tables" dimatikan**
+(rekomendasi Supabase sendiri saat create project — kita kontrol expose lewat
+migration, bukan default). Konsekuensinya: PostgREST butuh `GRANT` level tabel
+ke role `anon`/`authenticated` sebelum RLS sempat dievaluasi sama sekali —
+tanpa ini, tiap request ke REST API balik `401 permission denied for table ...`
+walau RLS policy-nya sudah benar. Ditambahkan di migration yang sama:
+
+```sql
+grant select, insert, update, delete on notes, tags, note_tags to authenticated;
+grant select on notes, tags, note_tags to anon;
+```
+
+`anon` sengaja cuma dapat `select` (bukan tulis) — supaya request anon bisa
+*mencapai* tabel dan RLS yang menjatuhkan ke 0 baris, bukan ditolak duluan oleh
+grant. RLS tetap jadi batas akses sesungguhnya; grant ini cuma soal "boleh coba",
+bukan "boleh lihat semua".
 
 ---
 
