@@ -16,6 +16,17 @@ Changelog pekerjaan yang sudah selesai. Terbaru di atas.
 
 [01/08/2026]
 
+- add : CRUD note lengkap — sidebar, create/update/delete (soft delete), pin (ba5dd2b)
+- add : auto-save debounce 800ms, dipercepat dari Fase 6 atas permintaan (ba5dd2b)
+- add : fitur lock note dengan PIN, di luar rencana PLAN.md awal (ba5dd2b)
+- security : PIN di-hash pakai scrypt (`node:crypto`), tidak ada dependency baru (ba5dd2b)
+- security : content note locked tidak pernah dikirim server via load() biasa — hanya lewat action unlock setelah PIN benar (ba5dd2b)
+- fix : auto-save race condition — timer debounce basi bisa menyimpan ke note yang salah saat pindah note cepat (ba5dd2b)
+
+---
+
+[01/08/2026]
+
 - add : login/logout via Supabase Auth dengan form action dan `use:enhance` (9915cc5)
 - add : route guard di hooks.server.ts — halaman non-publik redirect ke /login kalau belum login (9915cc5)
 - security : safeGetSession() verifikasi JWT lewat getUser(), bukan percaya cookie mentah (9915cc5)
