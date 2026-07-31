@@ -3,6 +3,7 @@
 	import { deserialize } from '$app/forms';
 	import { debounce } from '$lib/utils/debounce';
 	import PinGate from '$lib/components/PinGate.svelte';
+	import PinPrompt from '$lib/components/PinPrompt.svelte';
 	import LockIcon from '$lib/components/icons/LockIcon.svelte';
 	import UnlockIcon from '$lib/components/icons/UnlockIcon.svelte';
 	import TrashIcon from '$lib/components/icons/TrashIcon.svelte';
@@ -24,14 +25,18 @@
 	let content = $state(initialNote.content);
 	let status: 'idle' | 'saving' | 'saved' | 'error' = $state('idle');
 	let confirmingDelete = $state(false);
-	let showLockForm = $state(false);
-	let lockPin = $state('');
-	let lockError = $state<string | null>(null);
+	let showLockPrompt = $state(false);
+	let showRemoveLockPrompt = $state(false);
 
 	const unlockKey = `notechelvyn:unlocked:${note.id}`;
-	// sessionStorage clears when the tab closes — an unlocked note doesn't
-	// stay open across browser restarts, only within the current session.
-	let isUnlocked = $state(!note.is_locked || sessionStorage.getItem(unlockKey) === 'true');
+	// sessionStorage only exists in the browser — this component renders on
+	// the server first (SSR), where `sessionStorage` is undefined and would
+	// throw. Locked notes always start gated there; the client re-evaluates
+	// after hydration if a real session flag says otherwise.
+	let isUnlocked = $state(
+		!note.is_locked ||
+			(typeof window !== 'undefined' && sessionStorage.getItem(unlockKey) === 'true')
+	);
 
 	async function save() {
 		status = 'saving';
@@ -111,32 +116,28 @@
 		return null;
 	}
 
-	async function submitLock(e: SubmitEvent) {
-		e.preventDefault();
-		lockError = null;
-
+	async function lockWithPin(pin: string): Promise<string | null> {
 		const res = await fetch('?/lock', {
 			method: 'POST',
-			body: new URLSearchParams({ pin: lockPin })
+			body: new URLSearchParams({ pin })
 		});
 		const result: ActionResult = deserialize(await res.text());
 
 		if (result.type === 'failure') {
-			lockError = (result.data?.error as string | undefined) ?? 'Could not lock note.';
-			return;
+			return (result.data?.error as string | undefined) ?? 'Could not lock note.';
 		}
 
+		// Locking is immediate and strict: even the person who just set the
+		// PIN has to re-enter it, same as reopening from the sidebar cold.
 		note = { ...note, is_locked: true };
-		sessionStorage.setItem(unlockKey, 'true');
-		showLockForm = false;
-		lockPin = '';
+		sessionStorage.removeItem(unlockKey);
+		isUnlocked = false;
+		showLockPrompt = false;
 		await invalidate('app:notes');
+		return null;
 	}
 
-	async function removeLock() {
-		const pin = prompt('Enter the current PIN to remove the lock:');
-		if (!pin) return;
-
+	async function removeLockWithPin(pin: string): Promise<string | null> {
 		const res = await fetch('?/unlock', {
 			method: 'POST',
 			body: new URLSearchParams({ pin, remove: 'true' })
@@ -144,17 +145,26 @@
 		const result: ActionResult = deserialize(await res.text());
 
 		if (result.type !== 'success') {
-			alert('Incorrect PIN.');
-			return;
+			return 'Incorrect PIN.';
 		}
 
 		note = { ...note, is_locked: false };
 		sessionStorage.removeItem(unlockKey);
+		showRemoveLockPrompt = false;
 		await invalidate('app:notes');
+		return null;
 	}
 </script>
 
-{#if !isUnlocked}
+{#if note.is_locked && !isUnlocked}
+	<!-- Locked content is never sent to the client, so there's nothing real
+	     to show behind the gate — just the header chrome, blurred by the
+	     modal's own backdrop. -->
+	<main class="flex min-h-screen flex-col">
+		<header class="border-b border-gray-200 px-6 py-3">
+			<span class="text-lg font-semibold tracking-tight text-gray-300">{note.title}</span>
+		</header>
+	</main>
 	<PinGate title={note.title} onSubmit={unlockWithPin} />
 {:else}
 	<main class="flex min-h-screen flex-col">
@@ -184,40 +194,16 @@
 				{#if note.is_locked}
 					<button
 						type="button"
-						onclick={removeLock}
+						onclick={() => (showRemoveLockPrompt = true)}
 						class="rounded-md p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-700"
 						title="Remove lock"
 					>
 						<LockIcon />
 					</button>
-				{:else if showLockForm}
-					<form onsubmit={submitLock} class="flex items-center gap-2">
-						<input
-							type="password"
-							inputmode="numeric"
-							bind:value={lockPin}
-							placeholder="Set PIN"
-							autofocus
-							class="w-28 rounded-md border-gray-300 text-sm shadow-sm focus:border-gray-500 focus:ring-gray-500"
-						/>
-						<button type="submit" class="text-sm font-medium text-gray-900 hover:text-gray-700">
-							Save
-						</button>
-						<button
-							type="button"
-							onclick={() => (showLockForm = false)}
-							class="text-sm text-gray-500 hover:text-gray-900"
-						>
-							Cancel
-						</button>
-					</form>
-					{#if lockError}
-						<span class="text-sm text-red-600">{lockError}</span>
-					{/if}
 				{:else}
 					<button
 						type="button"
-						onclick={() => (showLockForm = true)}
+						onclick={() => (showLockPrompt = true)}
 						class="rounded-md p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-700"
 						title="Lock this note"
 					>
@@ -273,4 +259,24 @@
 			></textarea>
 		</div>
 	</main>
+
+	{#if showLockPrompt}
+		<PinPrompt
+			heading="Lock this note"
+			description="Choose a 4–12 character PIN to lock this note."
+			submitLabel="Lock"
+			onSubmit={lockWithPin}
+			onClose={() => (showLockPrompt = false)}
+		/>
+	{/if}
+
+	{#if showRemoveLockPrompt}
+		<PinPrompt
+			heading="Remove lock"
+			description="Enter the current PIN to remove the lock."
+			submitLabel="Remove"
+			onSubmit={removeLockWithPin}
+			onClose={() => (showRemoveLockPrompt = false)}
+		/>
+	{/if}
 {/if}
