@@ -211,17 +211,17 @@ login dari IP lain memakai email owner.
 
 ---
 
-## Fase 3 — CRUD Note
+## Fase 3 — CRUD Note ✅
 
 **Tujuan:** bisa bikin, baca, edit, hapus note.
 
-- [ ] `src/routes/+page.server.ts` — load daftar note milik user
-- [ ] Sidebar daftar note (judul + cuplikan + waktu update)
-- [ ] `src/routes/note/[id]/+page.server.ts` + `+page.svelte`
-- [ ] Form action: `create`, `update`, `delete`
-- [ ] Soft delete (`is_archived = true`) dulu, bukan hard delete — biar tidak
+- [x] `src/routes/+page.server.ts` — load daftar note milik user
+- [x] Sidebar daftar note (judul + cuplikan + waktu update)
+- [x] `src/routes/note/[id]/+page.server.ts` + `+page.svelte`
+- [x] Form action: `create`, `update`, `delete`
+- [x] Soft delete (`is_archived = true`) dulu, bukan hard delete — biar tidak
       ada catatan hilang permanen karena salah klik
-- [ ] Konfirmasi sebelum hapus
+- [x] Konfirmasi sebelum hapus
 
 **Aturan yang tidak boleh dilanggar:** `user_id` diambil dari
 `locals.safeGetSession()`, **tidak pernah** dari request body. Kalau `user_id`
@@ -229,6 +229,37 @@ datang dari client, siapa pun bisa menulis note atas nama orang lain — RLS
 memang akan menahan, tapi jangan sampai bergantung pada satu lapis saja.
 
 **Selesai kalau:** semua operasi CRUD jalan dan daftar note ikut ter-update.
+
+### Ditambahkan di luar rencana awal: auto-save & lock note
+
+**Auto-save** dipindah lebih awal dari Fase 6 atas permintaan langsung —
+debounce 800ms, kirim lewat `fetch()` terprogram ke form action (bukan
+`use:enhance` submit biasa), karena perlu snapshot `title`/`content` dari
+`$state` di waktu-kirim, bukan bergantung pada `HTMLFormElement.requestSubmit()`
+yang sempat menyebabkan race condition (isi ke-reset ke kosong) saat pindah
+note dengan timer auto-save masih pending. Timer di-cancel eksplisit saat
+komponen note di-unmount (`{#key data.note.id}` remount + `$effect` cleanup)
+supaya auto-save basi dari note sebelumnya tidak menembak note yang salah.
+
+Ini menyimpang dari aturan "mutasi lewat form action, bukan fetch manual" di
+CLAUDE.md secara sadar — form action tetap dipakai sebagai endpoint (bukan
+`+server.ts`), cuma cara triggernya lewat `fetch()` terkontrol, bukan native
+form submit, karena butuh kontrol presisi atas kapan data diambil.
+
+**Lock note** (fitur privasi tambahan, di luar PLAN.md) — PIN per-note yang
+disimpan ter-hash (`scrypt` dari `node:crypto`, tanpa dependency baru) di
+kolom `pin_hash`. **Ini gate UX di client, bukan enkripsi** — content note
+tetap plaintext di database, diproteksi RLS yang sama seperti note lain.
+Server tidak pernah mengirim `content` note yang `is_locked` lewat `load()`
+biasa (baik ke halaman note maupun ke daftar sidebar) — content asli cuma
+dikirim sekali, sebagai hasil action `unlock` setelah PIN diverifikasi benar
+di server. Status "unlocked" disimpan di `sessionStorage` (hilang saat tab
+ditutup), bukan cookie/localStorage persisten.
+
+Migration: `supabase/migrations/20260801000000_add_note_lock.sql` — kolom
+`is_locked`, `pin_hash`, plus check constraint yang menjamin keduanya selalu
+konsisten (locked note wajib punya hash, unlocked note tidak boleh menyimpan
+hash basi).
 
 ---
 

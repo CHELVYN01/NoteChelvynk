@@ -1,16 +1,19 @@
 <script lang="ts">
 	import type { PageData } from './$types';
 
-	// Placeholder shell. Replaced by the note list in phase 3.
 	let { data }: { data: PageData } = $props();
 </script>
 
 <svelte:head><title>NoteChelvyn</title></svelte:head>
 
-<main class="mx-auto flex min-h-screen max-w-2xl flex-col justify-center gap-3 px-6">
-	<h1 class="text-3xl font-semibold tracking-tight">NoteChelvyn</h1>
-	<p class="text-gray-600">A private notebook that stays in sync across machines.</p>
-	<p class="text-sm text-gray-400">Signed in as {data.user?.email}. Notes land in phase 3.</p>
+<main class="flex min-h-screen flex-col items-center justify-center gap-3 px-6 text-center">
+	<h1 class="text-2xl font-semibold tracking-tight">NoteChelvyn</h1>
+	<p class="text-gray-500">
+		{data.notes.length === 0
+			? 'Create your first note to get started.'
+			: 'Select a note from the sidebar, or create a new one.'}
+	</p>
+	<p class="text-sm text-gray-400">Signed in as {data.user?.email}</p>
 
 	<form method="POST" action="/logout">
 		<button type="submit" class="text-sm font-medium text-gray-700 underline hover:text-gray-900">
