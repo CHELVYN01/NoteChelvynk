@@ -16,11 +16,11 @@ Changelog pekerjaan yang sudah selesai. Terbaru di atas.
 
 [01/08/2026]
 
-- add : migration awal — tabel notes, tags, note_tags dengan index & trigger updated_at (20260730000000_init_schema.sql)
-- security : RLS aktif di semua tabel, policy owner-only berbasis auth.uid()
-- security : signup dimatikan di Supabase Auth, akun owner dibuat manual
-- security : GRANT eksplisit ke anon/authenticated (Automatically expose new tables = OFF by design)
-- docs : verifikasi RLS via REST API — anon GET /notes balik 200 []
+- add : migration awal — tabel notes, tags, note_tags dengan index & trigger updated_at (528f037)
+- security : RLS aktif di semua tabel, policy owner-only berbasis auth.uid() (528f037)
+- security : signup dimatikan di Supabase Auth, akun owner dibuat manual (528f037)
+- security : GRANT eksplisit ke anon/authenticated (Automatically expose new tables = OFF by design) (528f037)
+- docs : verifikasi RLS via REST API — anon GET /notes balik 200 [] (528f037)
 
 ---
 
