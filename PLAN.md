@@ -160,23 +160,23 @@ grant select on notes, tags, note_tags to anon;
 ```
 
 `anon` sengaja cuma dapat `select` (bukan tulis) — supaya request anon bisa
-*mencapai* tabel dan RLS yang menjatuhkan ke 0 baris, bukan ditolak duluan oleh
+_mencapai_ tabel dan RLS yang menjatuhkan ke 0 baris, bukan ditolak duluan oleh
 grant. RLS tetap jadi batas akses sesungguhnya; grant ini cuma soal "boleh coba",
 bukan "boleh lihat semua".
 
 ---
 
-## Fase 2 — Auth
+## Fase 2 — Auth ✅
 
 **Tujuan:** bisa login, session bertahan setelah refresh, `/` terlindungi.
 
-- [ ] `src/lib/supabase.ts` — client browser (anon key)
-- [ ] `src/hooks.server.ts` — server client via `@supabase/ssr`, isi
+- [x] `src/lib/supabase.ts` — client browser (anon key)
+- [x] `src/hooks.server.ts` — server client via `@supabase/ssr`, isi
       `event.locals.supabase` dan `event.locals.safeGetSession()`
-- [ ] `src/routes/login/+page.svelte` + `+page.server.ts` (form action)
-- [ ] `src/routes/logout/+server.ts`
-- [ ] Route guard di `hooks.server.ts` — belum login → redirect ke `/login`
-- [ ] Rate limit percobaan login (in-memory map cukup untuk single user)
+- [x] `src/routes/login/+page.svelte` + `+page.server.ts` (form action)
+- [x] `src/routes/logout/+server.ts`
+- [x] Route guard di `hooks.server.ts` — belum login → redirect ke `/login`
+- [x] Rate limit percobaan login (in-memory map cukup untuk single user)
 
 **Penting soal `safeGetSession`:**
 `supabase.auth.getSession()` di server membaca cookie **tanpa memverifikasi
@@ -204,6 +204,10 @@ event.locals.safeGetSession = async () => {
 
 **Selesai kalau:** buka `/` tanpa login → redirect `/login`. Login berhasil →
 masuk `/`. Refresh → tetap login. Logout → balik ke `/login`.
+
+Ditambahkan di luar checklist: rate limit dikunci per `IP + email` (bukan cuma
+email) supaya penyerang tidak bisa mengunci owner sungguhan dengan menghajar
+login dari IP lain memakai email owner.
 
 ---
 
