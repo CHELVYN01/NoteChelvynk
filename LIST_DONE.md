@@ -16,6 +16,15 @@ Changelog pekerjaan yang sudah selesai. Terbaru di atas.
 
 [01/08/2026]
 
+- add : login/logout via Supabase Auth dengan form action dan `use:enhance` (9915cc5)
+- add : route guard di hooks.server.ts — halaman non-publik redirect ke /login kalau belum login (9915cc5)
+- security : safeGetSession() verifikasi JWT lewat getUser(), bukan percaya cookie mentah (9915cc5)
+- security : rate limit percobaan login, dikunci per IP+email (9915cc5)
+
+---
+
+[01/08/2026]
+
 - add : migration awal — tabel notes, tags, note_tags dengan index & trigger updated_at (528f037)
 - security : RLS aktif di semua tabel, policy owner-only berbasis auth.uid() (528f037)
 - security : signup dimatikan di Supabase Auth, akun owner dibuat manual (528f037)
