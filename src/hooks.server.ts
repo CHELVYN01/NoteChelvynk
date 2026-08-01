@@ -38,6 +38,19 @@ const supabase: Handle = async ({ event, resolve }) => {
 	});
 };
 
+// Content-Security-Policy itself is configured via kit.csp in vite.config.ts
+// instead of set here — SvelteKit needs to own that header to stamp its own
+// inline hydration script with a matching nonce/hash per request. Setting it
+// manually in this hook would either fight that mechanism or require
+// 'unsafe-inline', which defeats the point of having a script-src at all.
+const securityHeaders: Handle = async ({ event, resolve }) => {
+	const response = await resolve(event);
+	response.headers.set('X-Frame-Options', 'DENY');
+	response.headers.set('X-Content-Type-Options', 'nosniff');
+	response.headers.set('Referrer-Policy', 'strict-origin-when-cross-origin');
+	return response;
+};
+
 const PUBLIC_ROUTES = ['/login'];
 
 const authGuard: Handle = async ({ event, resolve }) => {
@@ -58,4 +71,4 @@ const authGuard: Handle = async ({ event, resolve }) => {
 	return resolve(event);
 };
 
-export const handle: Handle = sequence(supabase, authGuard);
+export const handle: Handle = sequence(supabase, authGuard, securityHeaders);

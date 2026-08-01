@@ -410,7 +410,7 @@ diam-diam, bukan soal performa.
 
 ### Catatan: draft localStorage mengikuti status unlock, bukan `is_locked` mentah
 
-Selama note terkunci masih *tergate* (PIN belum dimasukkan di sesi ini),
+Selama note terkunci masih _tergate_ (PIN belum dimasukkan di sesi ini),
 draft tidak pernah ditulis ke `localStorage` — konsisten dengan aturan lock
 note di Fase 3: content note locked tidak pernah keluar dari server dalam
 bentuk plaintext kecuali lewat action `unlock` yang terverifikasi PIN.
@@ -439,18 +439,71 @@ tuntas.
 
 **Tujuan:** live dan enak dipakai sehari-hari.
 
-- [ ] Ganti ke `adapter-vercel`
+- [x] Ganti ke `adapter-vercel` (sudah terpasang dari Fase 0, tidak ada
+      `adapter-node` yang perlu diganti — lihat catatan di bawah)
 - [ ] Set env var di Vercel dashboard (jangan pernah commit `.env`)
-- [ ] Loading state & error boundary
-- [ ] Halaman error 404 / 500
-- [ ] Cek responsif di HP
-- [ ] Security header di `hooks.server.ts`: CSP, `X-Frame-Options: DENY`,
+- [x] Loading state & error boundary
+- [x] Halaman error 404 / 500
+- [x] Cek responsif di HP
+- [x] Security header di `hooks.server.ts`: CSP, `X-Frame-Options: DENY`,
       `X-Content-Type-Options: nosniff`, `Referrer-Policy`
-- [ ] README dengan screenshot (ini yang dilihat orang saat menilai portofolio)
+- [x] README dengan screenshot (ini yang dilihat orang saat menilai portofolio)
 - [ ] Deploy + tes login dari device lain
 
 **Selesai kalau:** bisa login dari MacBook dan Windows, note yang sama muncul
 di keduanya.
+
+### Catatan: adapter-vercel sudah terpasang sejak Fase 0
+
+Tidak ada migrasi dari `adapter-node` yang perlu dilakukan — project ini sejak
+awal dikonfigurasi dengan `@sveltejs/adapter-vercel` di `vite.config.ts` (lihat
+catatan Fase 0 soal `EPERM` symlink saat build lokal di Windows, yang memang
+soal `adapter-vercel` itu sendiri, bukan `adapter-node`).
+
+### Catatan: CSP butuh opsi `csp` di plugin `sveltekit()`, bukan header manual
+
+SvelteKit versi ini (2.62+) membaca konfigurasi langsung dari argumen yang
+dipassing ke plugin `sveltekit({...})` di `vite.config.ts` — kalau argumen itu
+diisi (dan di project ini memang diisi, untuk `compilerOptions` dan
+`adapter`), file `svelte.config.js` terpisah **diabaikan** (dengan warning),
+bukan digabung. Karena itu opsi `csp` ditambahkan sebagai properti baru di
+pemanggilan `sveltekit({...})` yang sudah ada, bukan file konfigurasi baru.
+
+Awalnya CSP dicoba di-set manual lewat header di `hooks.server.ts` (pola yang
+sama dengan tiga header lain). Itu merusak app sepenuhnya — SvelteKit selalu
+menyuntik satu `<script nonce="...">` inline untuk hydration (`__sveltekit_dev`
+di dev, `__sveltekit_<hash>` di build), baik di dev maupun production. CSP
+manual dengan `script-src 'self'` tanpa pengecualian memblokir script itu;
+menambahkan `unsafe-inline` supaya tidak rusak akan meniadakan tujuan
+`script-src` yang ketat. Solusinya: pindahkan CSP ke opsi `csp.directives` di
+`sveltekit({...})`, yang membuat SvelteKit sendiri yang mengatur header itu
+dan otomatis menempelkan nonce per-request yang cocok ke script inline-nya —
+diverifikasi dengan curl bahwa nonce di header `Content-Security-Policy` sama
+persis dengan atribut `nonce` di tag `<script>` pada HTML yang dikirim.
+
+Empat header lain (`X-Frame-Options`, `X-Content-Type-Options`,
+`Referrer-Policy`) tetap di-set manual di `hooks.server.ts` karena SvelteKit
+tidak punya opsi konfigurasi built-in untuk itu.
+
+### Catatan: sidebar & modal tidak responsif sebelum fase ini
+
+Sidebar (`w-72` tetap) dan `Modal.svelte` (`left-72` hardcode, mengasumsikan
+sidebar selalu ada di kiri) tidak dirancang untuk layar sempit sejak dibuat —
+di HP, sidebar akan memakan sebagian layar secara permanen dan modal salah
+posisi. Diperbaiki dengan pola tab yang sama seperti split-view editor di
+Fase 4: di bawah breakpoint `sm`, sidebar dan halaman note bergantian
+menempati satu-satunya "layar" yang ada (bukan tampil berdampingan), dengan
+tombol back (`ChevronLeftIcon`) di header note untuk kembali ke daftar.
+`Modal.svelte` diubah dari `left-72` tetap menjadi `left-0 sm:left-72`, supaya
+tetap center ke area konten di layar lebar tapi full-width di layar sempit
+tempat sidebar tidak lagi tampil sejajar.
+
+### Catatan: env var Vercel & deploy belum dilakukan
+
+Butuh akses dashboard Vercel milik pemilik project dan keputusan untuk publish
+ke luar — di luar kewenangan AI assistant untuk dieksekusi tanpa didampingi
+langsung. Kode untuk mendukungnya (adapter, CSP, error page, responsif) sudah
+siap; langkah env var dan klik deploy menyusul bersama pemilik project.
 
 ---
 

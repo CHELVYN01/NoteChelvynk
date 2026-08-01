@@ -2,6 +2,7 @@
 	import { invalidate } from '$app/navigation';
 	import { deserialize } from '$app/forms';
 	import { page } from '$app/state';
+	import { resolve } from '$app/paths';
 	import { debounce } from '$lib/utils/debounce';
 	import { saveDraft, loadDraft, clearDraft } from '$lib/utils/draft';
 	import Modal from '$lib/components/Modal.svelte';
@@ -14,6 +15,7 @@
 	import UnlockIcon from '$lib/components/icons/UnlockIcon.svelte';
 	import TrashIcon from '$lib/components/icons/TrashIcon.svelte';
 	import PinIcon from '$lib/components/icons/PinIcon.svelte';
+	import ChevronLeftIcon from '$lib/components/icons/ChevronLeftIcon.svelte';
 	import type { Note, Tag } from '$lib/types';
 	import type { ActionResult } from '@sveltejs/kit';
 
@@ -331,7 +333,16 @@
 {:else}
 	<main class="flex min-h-screen flex-col">
 		<header class="grid grid-cols-3 items-center gap-4 border-b border-gray-200 px-6 py-3">
-			<div class="text-sm text-gray-400">
+			<div class="flex items-center gap-3 text-sm text-gray-400">
+				<!-- Below sm, the sidebar and the note view take turns occupying
+				     the one pane there's room for — this is how you get back. -->
+				<a
+					href={resolve('/')}
+					class="rounded-md p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-700 sm:hidden"
+					title="Back to notes"
+				>
+					<ChevronLeftIcon />
+				</a>
 				{#if conflict}
 					<span class="text-amber-600">Conflict — not saved.</span>
 				{:else if status === 'error'}
