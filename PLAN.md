@@ -263,15 +263,15 @@ hash basi).
 
 ---
 
-## Fase 4 — Markdown Editor + Preview
+## Fase 4 — Markdown Editor + Preview ✅
 
 **Tujuan:** editor markdown dengan preview yang aman.
 
-- [ ] Integrasi CodeMirror 6 dengan mode markdown
-- [ ] Split pane: editor kiri, preview kanan (bisa di-toggle)
-- [ ] Render markdown: `marked` → **`DOMPurify`** → HTML
-- [ ] Syntax highlighting untuk code block
-- [ ] Responsif — di layar sempit, editor dan preview jadi tab
+- [x] Integrasi CodeMirror 6 dengan mode markdown
+- [x] Split pane: editor kiri, preview kanan (bisa di-toggle)
+- [x] Render markdown: `marked` → **`DOMPurify`** → HTML
+- [x] Syntax highlighting untuk code block
+- [x] Responsif — di layar sempit, editor dan preview jadi tab
 
 **Kenapa DOMPurify wajib:** markdown mengizinkan raw HTML. Tanpa sanitasi,
 menempel snippet dari internet ke note bisa mengeksekusi script saat note
@@ -280,6 +280,38 @@ dibuka — stored XSS pada diri sendiri. Sanitasi dilakukan **sebelum**
 
 **Selesai kalau:** markdown ter-render benar, dan `<script>alert(1)</script>`
 di dalam note muncul sebagai teks biasa, tidak dieksekusi.
+
+### Catatan: default DOMPurify masih terlalu longgar untuk app catatan
+
+Diuji dengan 15 payload; 13 langsung mati, 2 lolos karena memang default
+DOMPurify — keduanya sekarang diblokir eksplisit di `src/lib/utils/markdown.ts`:
+
+- **`<form>` + `<input>` ter-render jadi form yang benar-benar berfungsi.**
+  Artinya note bisa memuat kotak login palsu yang submit ke server orang lain.
+  Di app single-user kamu harus mem-paste sendiri, tapi itu justru skenario
+  realistisnya: menyalin "tutorial" dari internet. Note tidak punya alasan sah
+  memuat form → `FORBID_TAGS`.
+- **Atribut `style` dipertahankan** karena browser modern mengabaikan
+  `javascript:` di dalam CSS, jadi bukan eksekusi script. Tapi `style` tetap
+  cukup untuk membuat overlay clickjacking (`position`/`opacity`/`z-index`) di
+  atas tombol Delete milik app sendiri → `FORBID_ATTR`.
+
+Pengecualian `svelte/no-at-html-tags` di-scope ke path `MarkdownPreview.svelte`
+lewat `eslint.config.js`, bukan komentar inline — supaya file lain yang memakai
+`{@html}` tetap gagal lint.
+
+### Catatan: `$effect` yang membaca state CodeMirror bikin loop
+
+Bug saat integrasi: hanya satu huruf yang tersimpan per ketikan. Effect yang
+menyinkronkan `value` ke dokumen ikut membaca `view.state`, sehingga Svelte
+men-subscribe effect itu ke state CodeMirror sendiri — `dispatch` memicu effect
+yang baru saja melakukan `dispatch` itu, dokumen tertimpa, cursor reset.
+
+Perbaikan: baca `value` secara tracked, tapi bungkus akses `view.state` dengan
+`untrack()`. `view` juga dijadikan variabel biasa (bukan `$state`) karena tidak
+pernah dirender. `doc:` saat inisialisasi ikut di-`untrack()` — tanpa itu tiap
+ketikan membongkar dan membangun ulang editor, yang diam-diam menghapus undo
+history.
 
 ---
 

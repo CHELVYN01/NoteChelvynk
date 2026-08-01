@@ -16,6 +16,26 @@ Changelog pekerjaan yang sudah selesai. Terbaru di atas.
 
 [01/08/2026]
 
+- add : editor markdown CodeMirror 6, highlight code block per bahasa (9c47f50)
+- add : live preview markdown dengan toggle Edit / Split / Preview, jadi tab di layar sempit (9c47f50)
+- security : pipeline `marked()` → `DOMPurify` → `{@html}`, 15 payload XSS diuji dan tidak ada yang lolos (9c47f50)
+- security : blokir `<form>`/`<input>` di preview — default DOMPurify meloloskannya, dan note yang berisi form fungsional bisa jadi kotak login palsu (9c47f50)
+- security : blokir atribut `style` di preview — bukan eksekusi script, tapi cukup untuk overlay clickjacking di atas tombol Delete (9c47f50)
+- security : pengecualian lint `{@html}` di-scope ke MarkdownPreview.svelte saja, file lain tetap gagal lint (9c47f50)
+- add : link hasil render dapat `rel="noopener noreferrer"` supaya halaman tujuan tidak pegang `window.opener` (9c47f50)
+- fix : editor cuma menyimpan satu huruf — `$effect` sinkronisasi ikut ter-subscribe ke state CodeMirror dan menimpa dokumen tiap ketikan (9c47f50)
+- fix : editor dibangun ulang tiap ketikan karena `doc:` membaca state reaktif — diam-diam menghapus undo history (9c47f50)
+
+---
+
+[01/08/2026]
+
+- fix : prompt PIN lock note jadi modal di tengah, sekaligus perbaiki crash saat SSR (5abd731)
+
+---
+
+[01/08/2026]
+
 - add : CRUD note lengkap — sidebar, create/update/delete (soft delete), pin (ba5dd2b)
 - add : auto-save debounce 800ms, dipercepat dari Fase 6 atas permintaan (ba5dd2b)
 - add : fitur lock note dengan PIN, di luar rencana PLAN.md awal (ba5dd2b)
