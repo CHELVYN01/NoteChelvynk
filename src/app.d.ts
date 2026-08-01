@@ -1,7 +1,7 @@
 // See https://svelte.dev/docs/kit/types#app.d.ts
 // for information about these interfaces
 import type { Session, SupabaseClient, User } from '@supabase/supabase-js';
-import type { Note } from '$lib/types';
+import type { Note, Tag } from '$lib/types';
 
 declare global {
 	namespace App {
@@ -20,6 +20,8 @@ declare global {
 			session: Session | null;
 			user: User | null;
 			notes: Pick<Note, 'id' | 'title' | 'content' | 'is_pinned' | 'is_locked' | 'updated_at'>[];
+			tags: Tag[];
+			activeTagId: string | null;
 		}
 		// interface Error {}
 		// interface PageState {}

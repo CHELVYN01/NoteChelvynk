@@ -1,23 +1,29 @@
 <script lang="ts">
 	import { invalidate } from '$app/navigation';
 	import { deserialize } from '$app/forms';
+	import { page } from '$app/state';
 	import { debounce } from '$lib/utils/debounce';
 	import PinGate from '$lib/components/PinGate.svelte';
 	import PinPrompt from '$lib/components/PinPrompt.svelte';
 	import MarkdownEditor from '$lib/components/MarkdownEditor.svelte';
 	import MarkdownPreview from '$lib/components/MarkdownPreview.svelte';
+	import TagPicker from '$lib/components/TagPicker.svelte';
 	import LockIcon from '$lib/components/icons/LockIcon.svelte';
 	import UnlockIcon from '$lib/components/icons/UnlockIcon.svelte';
 	import TrashIcon from '$lib/components/icons/TrashIcon.svelte';
 	import PinIcon from '$lib/components/icons/PinIcon.svelte';
-	import type { Note } from '$lib/types';
+	import type { Note, Tag } from '$lib/types';
 	import type { ActionResult } from '@sveltejs/kit';
 
-	let {
-		note: initialNote
-	}: {
-		note: Pick<Note, 'id' | 'title' | 'content' | 'is_pinned' | 'is_locked'>;
-	} = $props();
+	type EditableNote = Pick<Note, 'id' | 'title' | 'content' | 'is_pinned' | 'is_locked'> & {
+		tags: Pick<Tag, 'id' | 'name' | 'color'>[];
+	};
+
+	// note.tags is read where it's passed into TagPicker's noteTags prop below;
+	// the rule below doesn't trace usage that flows into a child component's
+	// prop expression, so it misreports the field as unused.
+	// eslint-disable-next-line svelte/no-unused-props -- false positive, see above
+	let { note: initialNote }: { note: EditableNote } = $props();
 
 	// Parent wraps this component in {#key data.note.id}, so a note switch
 	// remounts it instead of updating props in place — this only needs to
@@ -315,6 +321,8 @@
 				placeholder="Untitled"
 				class="border-none p-0 text-2xl font-semibold tracking-tight focus:ring-0"
 			/>
+
+			<TagPicker noteTags={note.tags} allTags={page.data.tags} />
 
 			<div class="flex min-h-[60vh] flex-1 gap-6">
 				{#if showEditor}

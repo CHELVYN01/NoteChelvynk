@@ -18,3 +18,12 @@ export interface Tag {
 	color: string;
 	created_at: string;
 }
+
+export interface SearchResult {
+	id: string;
+	title: string;
+	snippet: string;
+	is_pinned: boolean;
+	is_locked: boolean;
+	updated_at: string;
+}

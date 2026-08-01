@@ -16,7 +16,7 @@
 	{@render children()}
 {:else}
 	<div class="flex min-h-screen">
-		<Sidebar notes={data.notes} />
+		<Sidebar notes={data.notes} tags={data.tags} activeTagId={data.activeTagId} />
 		<div class="flex-1">
 			{@render children()}
 		</div>

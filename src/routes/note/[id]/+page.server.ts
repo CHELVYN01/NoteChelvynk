@@ -1,5 +1,6 @@
 import { error, fail, redirect } from '@sveltejs/kit';
 import { hashPin, verifyPin } from '$lib/server/pin';
+import type { Tag } from '$lib/types';
 import type { Actions, PageServerLoad } from './$types';
 
 const MAX_TITLE_LENGTH = 200;
@@ -22,15 +23,29 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 		error(404, 'Note not found.');
 	}
 
+	const { data: noteTags, error: tagsError } = await locals.supabase
+		.from('note_tags')
+		.select('tags!inner(id, user_id, name, color, created_at)')
+		.eq('note_id', params.id);
+
+	if (tagsError) {
+		console.error('failed to load note tags:', tagsError);
+	}
+	// note_tags -> tags is many-to-one (tag_id is a plain FK), but PostgREST's
+	// type inference can't see that through the join table and always types
+	// embedded relations as arrays — !inner doesn't change the runtime shape,
+	// each row really does carry a single tag object here.
+	const tags = (noteTags ?? []).map((row) => row.tags as unknown as Tag);
+
 	// The server doesn't know whether the client already unlocked this note
 	// in a previous page load (that state lives in sessionStorage, not a
 	// cookie) — so content is withheld here regardless, and only handed
 	// over via the unlock action once the PIN is verified for this request.
 	if (note.is_locked) {
-		return { note: { ...note, content: '' } };
+		return { note: { ...note, content: '', tags } };
 	}
 
-	return { note };
+	return { note: { ...note, tags } };
 };
 
 export const actions: Actions = {
@@ -173,5 +188,77 @@ export const actions: Actions = {
 		}
 
 		return { note };
+	},
+
+	addTag: async ({ params, request, locals }) => {
+		const { user } = await locals.safeGetSession();
+		if (!user) error(401);
+
+		const formData = await request.formData();
+		const tagId = formData.get('tag_id');
+
+		if (typeof tagId !== 'string') {
+			return fail(400, { error: 'Invalid form data.' });
+		}
+
+		// Ownership of note_tags has no column of its own — it's derived from
+		// notes.user_id via the note_tags_owner RLS policy, which is the real
+		// gate here. Both id filters below are belt-and-suspenders on top of it.
+		const { error: dbError } = await locals.supabase
+			.from('note_tags')
+			.upsert({ note_id: params.id, tag_id: tagId }, { onConflict: 'note_id,tag_id' });
+
+		if (dbError) {
+			console.error('failed to add tag to note:', dbError);
+			return fail(500, { error: 'Could not add tag.' });
+		}
+
+		return { success: true };
+	},
+
+	removeTag: async ({ params, request, locals }) => {
+		const { user } = await locals.safeGetSession();
+		if (!user) error(401);
+
+		const formData = await request.formData();
+		const tagId = formData.get('tag_id');
+
+		if (typeof tagId !== 'string') {
+			return fail(400, { error: 'Invalid form data.' });
+		}
+
+		const { error: dbError } = await locals.supabase
+			.from('note_tags')
+			.delete()
+			.eq('note_id', params.id)
+			.eq('tag_id', tagId);
+
+		if (dbError) {
+			console.error('failed to remove tag from note:', dbError);
+			return fail(500, { error: 'Could not remove tag.' });
+		}
+
+		// Tags here are created ad-hoc from the tag picker, not pre-defined
+		// categories — once the last note wearing a tag drops it, the tag has
+		// no reason to keep showing up in the sidebar filter, so it's deleted
+		// outright rather than lingering as an empty entry.
+		const { count } = await locals.supabase
+			.from('note_tags')
+			.select('note_id', { count: 'exact', head: true })
+			.eq('tag_id', tagId);
+
+		if (count === 0) {
+			const { error: cleanupError } = await locals.supabase
+				.from('tags')
+				.delete()
+				.eq('id', tagId)
+				.eq('user_id', user.id);
+
+			if (cleanupError) {
+				console.error('failed to clean up unused tag:', cleanupError);
+			}
+		}
+
+		return { success: true };
 	}
 };

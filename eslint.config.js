@@ -39,12 +39,13 @@ export default defineConfig(
 		rules: {}
 	},
 	{
-		// The markdown preview is the single place allowed to use {@html}, and
-		// only because MarkdownPreview renders the output of renderMarkdown(),
-		// which runs everything through DOMPurify first. Scoping the exemption
-		// to this one file — instead of an inline comment — keeps it visible:
-		// any *other* file reaching for {@html} still fails lint.
-		files: ['src/lib/components/MarkdownPreview.svelte'],
+		// {@html} is only allowed where the string was already run through a
+		// DOMPurify-based sanitizer: MarkdownPreview uses renderMarkdown(),
+		// Sidebar's search results use sanitizeHeadline() for ts_headline()
+		// output. Scoping the exemption to these files — instead of inline
+		// comments — keeps it visible: any *other* file reaching for {@html}
+		// still fails lint.
+		files: ['src/lib/components/MarkdownPreview.svelte', 'src/lib/components/Sidebar.svelte'],
 		rules: { 'svelte/no-at-html-tags': 'off' }
 	}
 );
