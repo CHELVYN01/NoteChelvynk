@@ -4,6 +4,8 @@
 	import { debounce } from '$lib/utils/debounce';
 	import PinGate from '$lib/components/PinGate.svelte';
 	import PinPrompt from '$lib/components/PinPrompt.svelte';
+	import MarkdownEditor from '$lib/components/MarkdownEditor.svelte';
+	import MarkdownPreview from '$lib/components/MarkdownPreview.svelte';
 	import LockIcon from '$lib/components/icons/LockIcon.svelte';
 	import UnlockIcon from '$lib/components/icons/UnlockIcon.svelte';
 	import TrashIcon from '$lib/components/icons/TrashIcon.svelte';
@@ -27,6 +29,51 @@
 	let confirmingDelete = $state(false);
 	let showLockPrompt = $state(false);
 	let showRemoveLockPrompt = $state(false);
+
+	// On wide screens 'split' shows both panes; on narrow screens the same
+	// three values act as tabs, with 'split' falling back to editor-only.
+	type ViewMode = 'edit' | 'split' | 'preview';
+	const viewModeKey = 'notechelvyn:viewMode';
+	let viewMode: ViewMode = $state('split');
+
+	// localStorage is browser-only, and this component renders on the server
+	// first — read the stored preference after hydration instead.
+	$effect(() => {
+		const stored = localStorage.getItem(viewModeKey);
+		if (stored === 'edit' || stored === 'split' || stored === 'preview') {
+			viewMode = stored;
+		}
+	});
+
+	function setViewMode(mode: ViewMode) {
+		viewMode = mode;
+		localStorage.setItem(viewModeKey, mode);
+	}
+
+	const viewModes: { value: ViewMode; label: string; title: string }[] = [
+		{ value: 'edit', label: 'Edit', title: 'Editor only' },
+		{ value: 'split', label: 'Split', title: 'Editor and preview side by side' },
+		{ value: 'preview', label: 'Preview', title: 'Preview only' }
+	];
+
+	// Side-by-side needs room. Below Tailwind's `sm` breakpoint the two panes
+	// become tabs, so 'split' has to resolve to one of them — CSS alone can't
+	// do it because both panes would still be mounted and CodeMirror would be
+	// measuring a hidden element.
+	let isWide = $state(true);
+
+	$effect(() => {
+		const query = window.matchMedia('(min-width: 640px)');
+		isWide = query.matches;
+
+		const onChange = (e: MediaQueryListEvent) => (isWide = e.matches);
+		query.addEventListener('change', onChange);
+		return () => query.removeEventListener('change', onChange);
+	});
+
+	let effectiveMode = $derived<ViewMode>(viewMode === 'split' && !isWide ? 'edit' : viewMode);
+	let showEditor = $derived(effectiveMode !== 'preview');
+	let showPreview = $derived(effectiveMode !== 'edit');
 
 	const unlockKey = `notechelvyn:unlocked:${note.id}`;
 	// sessionStorage only exists in the browser — this component renders on
@@ -239,7 +286,24 @@
 				{/if}
 			</div>
 
-			<div></div>
+			<div class="flex justify-end">
+				<div class="inline-flex rounded-md border border-gray-200 p-0.5 text-sm">
+					{#each viewModes as mode (mode.value)}
+						<button
+							type="button"
+							onclick={() => setViewMode(mode.value)}
+							class="rounded px-2.5 py-1 {mode.value === 'split'
+								? 'hidden sm:block'
+								: ''} {viewMode === mode.value
+								? 'bg-gray-100 font-medium text-gray-900'
+								: 'text-gray-500 hover:text-gray-800'}"
+							title={mode.title}
+						>
+							{mode.label}
+						</button>
+					{/each}
+				</div>
+			</div>
 		</header>
 
 		<div class="flex flex-1 flex-col gap-4 px-6 py-4">
@@ -251,12 +315,25 @@
 				placeholder="Untitled"
 				class="border-none p-0 text-2xl font-semibold tracking-tight focus:ring-0"
 			/>
-			<textarea
-				bind:value={content}
-				oninput={onInput}
-				placeholder="Start writing…"
-				class="min-h-[60vh] flex-1 resize-none border-none p-0 text-base leading-relaxed focus:ring-0"
-			></textarea>
+
+			<div class="flex min-h-[60vh] flex-1 gap-6">
+				{#if showEditor}
+					<div class="min-w-0 flex-1">
+						<MarkdownEditor bind:value={content} {onInput} />
+					</div>
+				{/if}
+
+				{#if showPreview}
+					<!-- The divider only makes sense when both panes are visible. -->
+					<div
+						class="min-w-0 flex-1 overflow-y-auto {showEditor
+							? 'border-l border-gray-200 pl-6'
+							: ''}"
+					>
+						<MarkdownPreview {content} />
+					</div>
+				{/if}
+			</div>
 		</div>
 	</main>
 
