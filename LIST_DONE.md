@@ -16,6 +16,16 @@ Changelog pekerjaan yang sudah selesai. Terbaru di atas.
 
 [02/08/2026]
 
+- add : halaman error 404/500 custom, indikator loading saat navigasi antar note (71c729f)
+- add : sidebar & note view responsif di layar sempit — bergantian tampil sebagai satu panel, tombol back untuk kembali ke daftar (71c729f)
+- security : CSP ketat (nonce-based, tanpa `unsafe-inline` untuk script) lewat opsi `csp` di plugin `sveltekit()`, bukan header manual — supaya nonce inline hydration script SvelteKit tetap cocok (71c729f)
+- security : `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`, `Referrer-Policy: strict-origin-when-cross-origin` di semua response (71c729f)
+- fix : `Modal.svelte` tidak lagi hardcode lebar sidebar (`left-72`) — salah posisi di layar sempit tempat sidebar tidak tampil sejajar (71c729f)
+
+---
+
+[02/08/2026]
+
 - add : draft note ke `localStorage` tiap ketikan, dipulihkan lewat prompt restore jika lebih baru dari server (0f5d7e4)
 - add : indikator status `Offline — draft saved locally`, auto-retry save saat koneksi kembali (0f5d7e4)
 - add : deteksi konflik multi-device — action `update` menolak (409) kalau `updated_at` server berubah sejak load, tawarkan reload atau overwrite (0f5d7e4)
