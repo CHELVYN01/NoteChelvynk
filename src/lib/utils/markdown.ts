@@ -51,11 +51,3 @@ DOMPurify.addHook('afterSanitizeAttributes', (node) => {
 		node.setAttribute('rel', 'noopener noreferrer');
 	}
 });
-
-// ts_headline() wraps matches in <b>...</b> (its default StartSel/StopSel)
-// around plain-text content it extracted from the note — that text can still
-// contain anything the user typed, so it needs the same sanitization as
-// markdown, just with a much smaller allowlist since no other tag is expected.
-export function sanitizeHeadline(html: string): string {
-	return DOMPurify.sanitize(html, { ALLOWED_TAGS: ['b'], ALLOWED_ATTR: [] });
-}

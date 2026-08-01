@@ -527,26 +527,61 @@ ke luar — di luar kewenangan AI assistant untuk dieksekusi tanpa didampingi
 langsung. Kode untuk mendukungnya (adapter, CSP, error page, responsif) sudah
 siap; langkah env var dan klik deploy menyusul bersama pemilik project.
 
-### Catatan: `overrides: jsdom@27.3.0` — masih berlaku, tapi bukan solusi utuh
+### Catatan: akar masalah 500 sesungguhnya — `jsdom` ter-load di semua route lewat Sidebar
 
-Selagi men-debug 500 di atas, satu error spesifik yang muncul adalah
-`html-encoding-sniffer@6.0.0` (dependency `jsdom@29.1.1`) meng-`require()`
-paket `@exodus/bytes` yang murni ESM — kombinasi yang gagal di runtime
-serverless Vercel. Ditambal dengan `"overrides": { "jsdom": "27.3.0" }` di
-`package.json` (versi 27.x terakhir sebelum `html-encoding-sniffer` di-bump
-ke `^6.0.0`; `27.4.0` sudah kena, begitu juga `jsdom@30`, jadi bukan soal
-"belum upgrade" — harus mundur). 20 payload XSS diverifikasi ulang lewat
-`renderMarkdown()` langsung setelah downgrade ini, semua tetap dinetralisir.
+Kronologi debugging (dua teori sebelumnya salah, dicatat di sini karena
+prosesnya sendiri informatif):
 
-**Tapi ini ternyata bukan akar masalah sesungguhnya** — setelah override ini
-di-deploy, error yang sama-persis-polanya muncul lagi di dependency lain
-(`@asamuzakjp/css-color`). Itu petunjuk bahwa masalahnya bukan satu paket
-spesifik, melainkan perubahan `vite.config.ts` (lihat catatan CSP di atas)
-yang mengubah cara keseluruhan dependency graph di-bundle untuk Vercel.
-Override `jsdom` ini tetap dipertahankan (tidak merugikan, dan sudah
-terverifikasi tidak melemahkan sanitasi), tapi perbaikan sesungguhnya adalah
-revert `vite.config.ts` di catatan CSP di atas — bukan menambal versi paket
-satu per satu.
+1. **Teori 1 (salah): bug `html-encoding-sniffer`/`jsdom` versi tertentu.**
+   `html-encoding-sniffer@6.0.0` (dependency `jsdom@29.1.1`) meng-`require()`
+   paket `@exodus/bytes` yang murni ESM — gagal di runtime serverless Vercel
+   dengan `ERR_REQUIRE_ESM`. Ditambal dengan
+   `"overrides": { "jsdom": "27.3.0" }` di `package.json` (versi 27.x
+   terakhir sebelum dependency itu di-bump; `27.4.0` dan `jsdom@30` sama-sama
+   sudah kena). Setelah di-deploy, error **sama polanya** muncul lagi di
+   dependency lain (`@asamuzakjp/css-color` vs `@csstools/css-calc`) — jsdom
+   punya banyak dependency ESM-only serupa, jadi menambal satu per satu tidak
+   akan pernah selesai.
+2. **Teori 2 (salah): perubahan `vite.config.ts` (CSP, function-form
+   config) yang mengubah bundling.** Di-revert penuh ke bentuk sebelum
+   Fase 7 — error tetap identik. Ini membuktikan config Vite bukan
+   penyebabnya.
+3. **Akar masalah sesungguhnya:** `Sidebar.svelte` — dirender di
+   `+layout.svelte` **root**, jadi bagian dari hampir semua route (termasuk
+   `/`, `/favicon.ico`, bahkan sebelum halaman note mana pun dibuka) — meng-
+   `import { sanitizeHeadline } from '$lib/utils/markdown'`. `markdown.ts`
+   meng-import `isomorphic-dompurify` di top-level, yang menyeret seluruh
+   `jsdom` masuk ke server-rendering bundle yang dipakai **semua** route,
+   bukan cuma `/note/[id]` yang benar-benar butuh render markdown. Satu
+   serverless function Vercel membundle seluruh app, jadi modul itu di-load
+   sekali saat cold start dan crash duluan sebelum request mana pun sempat
+   diproses — itu kenapa errornya konsisten muncul bahkan di `/login`.
+
+   `sanitizeHeadline()` sendiri sebenarnya tidak pernah butuh DOM/jsdom sama
+   sekali — dia cuma perlu mengizinkan tag `<b>` dari `ts_headline()` dan
+   meng-escape sisanya. Dipisah ke `src/lib/utils/headline.ts` yang cuma
+   pakai `String.replaceAll` (escape `&`/`<`/`>` dulu, baru reinstate persis
+   pasangan `&lt;b&gt;`/`&lt;/b&gt;` yang berasal dari `ts_headline`) — tidak
+   ada import DOMPurify/jsdom sama sekali di file ini. `Sidebar.svelte`
+   diarahkan ke file baru ini, bukan `markdown.ts`.
+
+   `renderMarkdown()` (yang memang butuh DOMPurify penuh untuk sanitasi HTML
+   arbitrer) tetap di `markdown.ts`, tetap dipakai `MarkdownPreview.svelte`,
+   yang cuma di-import oleh `NoteEditor.svelte` — jadi `jsdom` sekarang cuma
+   ter-load saat route `/note/[id]` benar-benar diakses, bukan di semua
+   route.
+
+   Diverifikasi: 9 kasus (termasuk payload `<script>`, `onerror`, `onload`,
+   `onclick`, tag `<b>` palsu dengan atribut event, nested angle brackets)
+   di-parse ulang lewat `jsdom` sungguhan (bukan regex tebak-tebakan) untuk
+   memastikan tidak ada elemen selain `<b>` polos dan tidak ada atribut
+   `on*` yang lolos ke output `sanitizeHeadline()` yang baru.
+
+**Pelajaran:** komponen yang dirender di root layout ikut ke bundle SEMUA
+route di deploy serverless — dependency berat (jsdom) yang diimpor di sana,
+sekalipun cuma untuk fungsi sesederhana whitelist satu tag, membawa seluruh
+masalah dependency itu ke setiap route, bukan cuma route yang benar-benar
+memakainya.
 
 ---
 

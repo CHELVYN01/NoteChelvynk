@@ -6,7 +6,7 @@
 	import LockIcon from '$lib/components/icons/LockIcon.svelte';
 	import SearchBar from '$lib/components/SearchBar.svelte';
 	import { tagChipClass } from '$lib/utils/tagColors';
-	import { sanitizeHeadline } from '$lib/utils/markdown';
+	import { sanitizeHeadline } from '$lib/utils/headline';
 	import type { Note, SearchResult, Tag } from '$lib/types';
 
 	let {
