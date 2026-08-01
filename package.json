@@ -47,5 +47,8 @@
 		"@supabase/supabase-js": "^2.111.0",
 		"isomorphic-dompurify": "^3.19.0",
 		"marked": "^18.0.7"
+	},
+	"overrides": {
+		"jsdom": "27.3.0"
 	}
 }

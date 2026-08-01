@@ -505,6 +505,41 @@ ke luar — di luar kewenangan AI assistant untuk dieksekusi tanpa didampingi
 langsung. Kode untuk mendukungnya (adapter, CSP, error page, responsif) sudah
 siap; langkah env var dan klik deploy menyusul bersama pemilik project.
 
+### Catatan: deploy pertama 500 di semua route — bug jsdom, bukan kode Fase 7
+
+Deploy Vercel pertama gagal dengan `500` di setiap route termasuk `/login`.
+Runtime log menunjukkan:
+
+```
+Error [ERR_REQUIRE_ESM]: require() of ES Module
+.../node_modules/@exodus/bytes/encoding-lite.js from
+.../node_modules/html-encoding-sniffer/lib/html-encoding-sniffer.js not supported.
+```
+
+Bukan disebabkan perubahan CSP/adapter/dsb di fase ini — `isomorphic-dompurify`
+(yang menarik `jsdom` untuk sanitasi markdown di server) sudah dipakai sejak
+Fase 4, dan `package-lock.json` tidak berubah sejak commit fase itu. Baru
+ketahuan sekarang karena `npm run build` di Windows selalu gagal duluan di
+tahap lain (`EPERM` symlink, sudah dicatat di Fase 0) — belum ada sesi
+sebelumnya yang berhasil menjalankan build+runtime Vercel sungguhan sampai
+percobaan deploy pertama ini.
+
+Akar masalahnya: `html-encoding-sniffer@6.0.0` (dependency `jsdom@29.1.1`,
+versi yang diminta `isomorphic-dompurify@3.19.0`) meng-`require()` paket
+`@exodus/bytes`, yang murni ESM (`"type": "module"`) — kombinasi itu gagal di
+runtime serverless function Vercel (Node ESM/CJS interop), walau tidak
+terdeteksi lewat `npm run check`/`npm run dev` di lokal.
+
+Perbaikan: `"overrides": { "jsdom": "27.3.0" }` di `package.json` — versi
+`jsdom` 27.x terakhir sebelum `html-encoding-sniffer` di-bump ke `^6.0.0`
+(persisnya di `27.4.0`, jadi `27.3.0` adalah versi teratas yang masih aman).
+`jsdom@30` dicek juga dan ternyata masih mengarah ke
+`html-encoding-sniffer@^6`, jadi bukan soal "belum di-upgrade" — perbaikannya
+memang harus mundur, bukan maju. Setelah override, 20 payload XSS (15 asli
+dari Fase 4 + 5 tambahan) diverifikasi ulang lewat `renderMarkdown()`
+langsung — semuanya tetap dinetralisir dengan benar, jadi downgrade ini tidak
+melemahkan sanitasi.
+
 ---
 
 ## Roadmap (setelah v1)

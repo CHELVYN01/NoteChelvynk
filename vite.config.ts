@@ -11,8 +11,14 @@ import { defineConfig, loadEnv } from 'vite';
 // isn't reachable here — loadEnv(mode, ...) is Vite's own equivalent, and
 // needs the Vite `mode` from defineConfig's callback form, not NODE_ENV
 // (which Vite doesn't set and isn't guaranteed to match `mode` anyway).
+//
+// loadEnv only reads .env* files from disk — on Vercel there is no such
+// file (env vars are injected straight into process.env, never written to
+// disk), so it would resolve to '' there even with the dashboard var set
+// correctly. Falling back to process.env covers that case.
 export default defineConfig(({ mode }) => {
-	const { PUBLIC_SUPABASE_URL } = loadEnv(mode, process.cwd(), '');
+	const fileEnv = loadEnv(mode, process.cwd(), '');
+	const PUBLIC_SUPABASE_URL = fileEnv.PUBLIC_SUPABASE_URL || process.env.PUBLIC_SUPABASE_URL || '';
 
 	// The CSP directive type wants a template-literal-typed host source
 	// matching a specific scheme/host/port grammar, which TypeScript can't
@@ -40,7 +46,7 @@ export default defineConfig(({ mode }) => {
 						'script-src': ['self'],
 						'style-src': ['self', 'unsafe-inline'],
 						'img-src': ['self', 'data:'],
-						'connect-src': ['self', supabaseHostSource],
+						'connect-src': PUBLIC_SUPABASE_URL ? ['self', supabaseHostSource] : ['self'],
 						'base-uri': ['self'],
 						'form-action': ['self'],
 						'frame-ancestors': ['none']
