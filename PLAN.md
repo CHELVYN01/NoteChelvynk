@@ -445,8 +445,9 @@ tuntas.
 - [x] Loading state & error boundary
 - [x] Halaman error 404 / 500
 - [x] Cek responsif di HP
-- [x] Security header di `hooks.server.ts`: CSP, `X-Frame-Options: DENY`,
-      `X-Content-Type-Options: nosniff`, `Referrer-Policy`
+- [ ] Security header di `hooks.server.ts`: ~~CSP~~, `X-Frame-Options: DENY`,
+      `X-Content-Type-Options: nosniff`, `Referrer-Policy` — CSP dibatalkan
+      sementara, lihat catatan di bawah
 - [x] README dengan screenshot (ini yang dilihat orang saat menilai portofolio)
 - [ ] Deploy + tes login dari device lain
 
@@ -460,30 +461,51 @@ awal dikonfigurasi dengan `@sveltejs/adapter-vercel` di `vite.config.ts` (lihat
 catatan Fase 0 soal `EPERM` symlink saat build lokal di Windows, yang memang
 soal `adapter-vercel` itu sendiri, bukan `adapter-node`).
 
-### Catatan: CSP butuh opsi `csp` di plugin `sveltekit()`, bukan header manual
+### Catatan: CSP dibatalkan — merusak build produksi di Vercel
 
-SvelteKit versi ini (2.62+) membaca konfigurasi langsung dari argumen yang
-dipassing ke plugin `sveltekit({...})` di `vite.config.ts` — kalau argumen itu
-diisi (dan di project ini memang diisi, untuk `compilerOptions` dan
-`adapter`), file `svelte.config.js` terpisah **diabaikan** (dengan warning),
-bukan digabung. Karena itu opsi `csp` ditambahkan sebagai properti baru di
-pemanggilan `sveltekit({...})` yang sudah ada, bukan file konfigurasi baru.
+Percobaan pertama: CSP manual lewat header di `hooks.server.ts` (pola yang
+sama dengan tiga header lain). Itu merusak app sepenuhnya di dev — SvelteKit
+selalu menyuntik satu `<script nonce="...">` inline untuk hydration
+(`__sveltekit_dev` di dev, `__sveltekit_<hash>` di build). CSP manual dengan
+`script-src 'self'` tanpa pengecualian memblokir script itu.
 
-Awalnya CSP dicoba di-set manual lewat header di `hooks.server.ts` (pola yang
-sama dengan tiga header lain). Itu merusak app sepenuhnya — SvelteKit selalu
-menyuntik satu `<script nonce="...">` inline untuk hydration (`__sveltekit_dev`
-di dev, `__sveltekit_<hash>` di build), baik di dev maupun production. CSP
-manual dengan `script-src 'self'` tanpa pengecualian memblokir script itu;
-menambahkan `unsafe-inline` supaya tidak rusak akan meniadakan tujuan
-`script-src` yang ketat. Solusinya: pindahkan CSP ke opsi `csp.directives` di
-`sveltekit({...})`, yang membuat SvelteKit sendiri yang mengatur header itu
-dan otomatis menempelkan nonce per-request yang cocok ke script inline-nya —
-diverifikasi dengan curl bahwa nonce di header `Content-Security-Policy` sama
-persis dengan atribut `nonce` di tag `<script>` pada HTML yang dikirim.
+Solusi yang dicoba berikutnya: pindahkan CSP ke opsi `csp.directives` di
+`sveltekit({...})` (`vite.config.ts`), supaya SvelteKit sendiri yang
+menempelkan nonce per-request ke script inline-nya. Ini butuh baca
+`PUBLIC_SUPABASE_URL` di `vite.config.ts` untuk `connect-src`, yang berarti
+mengubah `defineConfig({...})` object literal jadi `defineConfig(({ mode }) =>
+{...})` bentuk fungsi (untuk dapat `mode` dari Vite, dipakai `loadEnv`).
+Diverifikasi jalan benar di **dev lokal** — nonce di header cocok dengan
+atribut di HTML.
 
-Empat header lain (`X-Frame-Options`, `X-Content-Type-Options`,
-`Referrer-Policy`) tetap di-set manual di `hooks.server.ts` karena SvelteKit
-tidak punya opsi konfigurasi built-in untuk itu.
+**Tapi ternyata merusak build produksi di Vercel**, yang di sesi ini baru
+ketahuan setelah deploy sungguhan (project ini sudah pernah sukses deploy
+sebelum Fase 7, jadi regresi ini pasti datang dari perubahan fase ini, bukan
+bug lama). Deploy dengan CSP + function-form config menghasilkan `500` di
+semua route dengan:
+
+```
+Error [ERR_REQUIRE_ESM]: require() of ES Module .../@exodus/bytes/encoding-lite.js
+from .../html-encoding-sniffer/lib/html-encoding-sniffer.js not supported.
+```
+
+lalu setelah satu perbaikan (lihat catatan jsdom di bawah), error yang sama
+muncul lagi di dependency lain (`@asamuzakjp/css-color` vs `@csstools/css-calc`).
+Pola errornya konsisten: bundler Vercel (Rolldown, dipakai `adapter-vercel`)
+gagal menghasilkan bundle yang benar untuk kombinasi CJS `require()` terhadap
+paket ESM murni — dan sesuatu di perubahan `vite.config.ts` (function form,
+atau `csp.directives` itu sendiri) membuat lebih banyak bagian dependency
+graph (termasuk `jsdom`, yang sudah ada sejak Fase 4) ikut terseret ke jalur
+bundling yang bermasalah itu, padahal sebelumnya (config object literal
+biasa, tanpa `csp`) tidak masalah.
+
+**Keputusan:** `vite.config.ts` dikembalikan ke bentuk semula (object literal,
+tanpa `csp`) — lihat commit revert. CSP ditunda sampai ditemukan cara
+menambahkannya tanpa mengubah bentuk config yang memicu regresi bundling ini.
+Tiga header lain (`X-Frame-Options`, `X-Content-Type-Options`,
+`Referrer-Policy`) tetap aktif di `hooks.server.ts` karena itu murni
+response-header manipulation di runtime, tidak menyentuh Vite config sama
+sekali.
 
 ### Catatan: sidebar & modal tidak responsif sebelum fase ini
 
@@ -505,40 +527,26 @@ ke luar — di luar kewenangan AI assistant untuk dieksekusi tanpa didampingi
 langsung. Kode untuk mendukungnya (adapter, CSP, error page, responsif) sudah
 siap; langkah env var dan klik deploy menyusul bersama pemilik project.
 
-### Catatan: deploy pertama 500 di semua route — bug jsdom, bukan kode Fase 7
+### Catatan: `overrides: jsdom@27.3.0` — masih berlaku, tapi bukan solusi utuh
 
-Deploy Vercel pertama gagal dengan `500` di setiap route termasuk `/login`.
-Runtime log menunjukkan:
+Selagi men-debug 500 di atas, satu error spesifik yang muncul adalah
+`html-encoding-sniffer@6.0.0` (dependency `jsdom@29.1.1`) meng-`require()`
+paket `@exodus/bytes` yang murni ESM — kombinasi yang gagal di runtime
+serverless Vercel. Ditambal dengan `"overrides": { "jsdom": "27.3.0" }` di
+`package.json` (versi 27.x terakhir sebelum `html-encoding-sniffer` di-bump
+ke `^6.0.0`; `27.4.0` sudah kena, begitu juga `jsdom@30`, jadi bukan soal
+"belum upgrade" — harus mundur). 20 payload XSS diverifikasi ulang lewat
+`renderMarkdown()` langsung setelah downgrade ini, semua tetap dinetralisir.
 
-```
-Error [ERR_REQUIRE_ESM]: require() of ES Module
-.../node_modules/@exodus/bytes/encoding-lite.js from
-.../node_modules/html-encoding-sniffer/lib/html-encoding-sniffer.js not supported.
-```
-
-Bukan disebabkan perubahan CSP/adapter/dsb di fase ini — `isomorphic-dompurify`
-(yang menarik `jsdom` untuk sanitasi markdown di server) sudah dipakai sejak
-Fase 4, dan `package-lock.json` tidak berubah sejak commit fase itu. Baru
-ketahuan sekarang karena `npm run build` di Windows selalu gagal duluan di
-tahap lain (`EPERM` symlink, sudah dicatat di Fase 0) — belum ada sesi
-sebelumnya yang berhasil menjalankan build+runtime Vercel sungguhan sampai
-percobaan deploy pertama ini.
-
-Akar masalahnya: `html-encoding-sniffer@6.0.0` (dependency `jsdom@29.1.1`,
-versi yang diminta `isomorphic-dompurify@3.19.0`) meng-`require()` paket
-`@exodus/bytes`, yang murni ESM (`"type": "module"`) — kombinasi itu gagal di
-runtime serverless function Vercel (Node ESM/CJS interop), walau tidak
-terdeteksi lewat `npm run check`/`npm run dev` di lokal.
-
-Perbaikan: `"overrides": { "jsdom": "27.3.0" }` di `package.json` — versi
-`jsdom` 27.x terakhir sebelum `html-encoding-sniffer` di-bump ke `^6.0.0`
-(persisnya di `27.4.0`, jadi `27.3.0` adalah versi teratas yang masih aman).
-`jsdom@30` dicek juga dan ternyata masih mengarah ke
-`html-encoding-sniffer@^6`, jadi bukan soal "belum di-upgrade" — perbaikannya
-memang harus mundur, bukan maju. Setelah override, 20 payload XSS (15 asli
-dari Fase 4 + 5 tambahan) diverifikasi ulang lewat `renderMarkdown()`
-langsung — semuanya tetap dinetralisir dengan benar, jadi downgrade ini tidak
-melemahkan sanitasi.
+**Tapi ini ternyata bukan akar masalah sesungguhnya** — setelah override ini
+di-deploy, error yang sama-persis-polanya muncul lagi di dependency lain
+(`@asamuzakjp/css-color`). Itu petunjuk bahwa masalahnya bukan satu paket
+spesifik, melainkan perubahan `vite.config.ts` (lihat catatan CSP di atas)
+yang mengubah cara keseluruhan dependency graph di-bundle untuk Vercel.
+Override `jsdom` ini tetap dipertahankan (tidak merugikan, dan sudah
+terverifikasi tidak melemahkan sanitasi), tapi perbaikan sesungguhnya adalah
+revert `vite.config.ts` di catatan CSP di atas — bukan menambal versi paket
+satu per satu.
 
 ---
 
