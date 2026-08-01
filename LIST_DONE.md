@@ -16,6 +16,15 @@ Changelog pekerjaan yang sudah selesai. Terbaru di atas.
 
 [02/08/2026]
 
+- add : draft note ke `localStorage` tiap ketikan, dipulihkan lewat prompt restore jika lebih baru dari server (0f5d7e4)
+- add : indikator status `Offline — draft saved locally`, auto-retry save saat koneksi kembali (0f5d7e4)
+- add : deteksi konflik multi-device — action `update` menolak (409) kalau `updated_at` server berubah sejak load, tawarkan reload atau overwrite (0f5d7e4)
+- security : draft localStorage dikecualikan selama note locked masih tergate PIN, aktif lagi begitu ter-unlock di sesi itu (0f5d7e4)
+
+---
+
+[02/08/2026]
+
 - add : CRUD tag (buat, rename, hapus) via form action root, warna dari 7 preset Tailwind (6b3b835)
 - add : TagPicker di halaman note — assign/unassign tag existing atau buat baru sekaligus assign (6b3b835)
 - add : filter daftar note berdasarkan tag di sidebar, state di URL query `?tag=` (6b3b835)
