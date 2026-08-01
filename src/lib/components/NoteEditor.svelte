@@ -3,6 +3,8 @@
 	import { deserialize } from '$app/forms';
 	import { page } from '$app/state';
 	import { debounce } from '$lib/utils/debounce';
+	import { saveDraft, loadDraft, clearDraft } from '$lib/utils/draft';
+	import Modal from '$lib/components/Modal.svelte';
 	import PinGate from '$lib/components/PinGate.svelte';
 	import PinPrompt from '$lib/components/PinPrompt.svelte';
 	import MarkdownEditor from '$lib/components/MarkdownEditor.svelte';
@@ -15,7 +17,10 @@
 	import type { Note, Tag } from '$lib/types';
 	import type { ActionResult } from '@sveltejs/kit';
 
-	type EditableNote = Pick<Note, 'id' | 'title' | 'content' | 'is_pinned' | 'is_locked'> & {
+	type EditableNote = Pick<
+		Note,
+		'id' | 'title' | 'content' | 'is_pinned' | 'is_locked' | 'updated_at'
+	> & {
 		tags: Pick<Tag, 'id' | 'name' | 'color'>[];
 	};
 
@@ -31,10 +36,69 @@
 	let note = $state(initialNote);
 	let title = $state(initialNote.title);
 	let content = $state(initialNote.content);
-	let status: 'idle' | 'saving' | 'saved' | 'error' = $state('idle');
+	// The updated_at this client last confirmed with the server — sent back on
+	// the next save so the server can tell if another device wrote in between.
+	let knownUpdatedAt = $state(initialNote.updated_at);
+	let status: 'idle' | 'saving' | 'saved' | 'error' | 'offline' = $state('idle');
 	let confirmingDelete = $state(false);
 	let showLockPrompt = $state(false);
 	let showRemoveLockPrompt = $state(false);
+	let conflict = $state<{ serverUpdatedAt: string } | null>(null);
+	let restorableDraft = $state<{ title: string; content: string; savedAt: string } | null>(null);
+
+	const unlockKey = `notechelvyn:unlocked:${note.id}`;
+	// sessionStorage only exists in the browser — this component renders on
+	// the server first (SSR), where `sessionStorage` is undefined and would
+	// throw. Locked notes always start gated there; the client re-evaluates
+	// after hydration if a real session flag says otherwise.
+	let isUnlocked = $state(
+		!note.is_locked ||
+			(typeof window !== 'undefined' && sessionStorage.getItem(unlockKey) === 'true')
+	);
+
+	// Locked-and-still-gated notes never write their content to localStorage,
+	// plaintext — same rule as everywhere else content for these notes is
+	// handled: it only ever leaves the server via the PIN-verified unlock
+	// action. Once unlocked, the content is already plaintext in the editor
+	// itself, so drafting it locally adds no new exposure.
+	let draftEligible = $derived(isUnlocked);
+
+	$effect(() => {
+		if (!draftEligible) return;
+
+		const isOnline = () => (status = navigator.onLine ? 'idle' : 'offline');
+		isOnline();
+		window.addEventListener('online', isOnline);
+		window.addEventListener('offline', isOnline);
+		return () => {
+			window.removeEventListener('online', isOnline);
+			window.removeEventListener('offline', isOnline);
+		};
+	});
+
+	// Offer a restore instead of silently applying the draft — the server
+	// copy might be the one the user actually wants if the draft is stale
+	// junk from an abandoned edit.
+	$effect(() => {
+		if (!draftEligible) return;
+		const draft = loadDraft(note.id);
+		if (draft && new Date(draft.savedAt) > new Date(note.updated_at)) {
+			restorableDraft = draft;
+		}
+	});
+
+	function restoreDraft() {
+		if (!restorableDraft) return;
+		title = restorableDraft.title;
+		content = restorableDraft.content;
+		restorableDraft = null;
+		scheduleSave();
+	}
+
+	function discardDraft() {
+		clearDraft(note.id);
+		restorableDraft = null;
+	}
 
 	// On wide screens 'split' shows both panes; on narrow screens the same
 	// three values act as tabs, with 'split' falling back to editor-only.
@@ -81,36 +145,81 @@
 	let showEditor = $derived(effectiveMode !== 'preview');
 	let showPreview = $derived(effectiveMode !== 'edit');
 
-	const unlockKey = `notechelvyn:unlocked:${note.id}`;
-	// sessionStorage only exists in the browser — this component renders on
-	// the server first (SSR), where `sessionStorage` is undefined and would
-	// throw. Locked notes always start gated there; the client re-evaluates
-	// after hydration if a real session flag says otherwise.
-	let isUnlocked = $state(
-		!note.is_locked ||
-			(typeof window !== 'undefined' && sessionStorage.getItem(unlockKey) === 'true')
-	);
-
 	async function save() {
+		if (!navigator.onLine) {
+			status = 'offline';
+			return;
+		}
+
 		status = 'saving';
 
 		// Snapshot title/content at call time — the debounce delay means the
 		// user may have kept typing since this was scheduled, and reading
 		// $state here (not from closed-over args) always gets the latest value.
-		const res = await fetch(`?/update`, {
-			method: 'POST',
-			body: new URLSearchParams({ title, content })
-		});
+		let res: Response;
+		try {
+			res = await fetch(`?/update`, {
+				method: 'POST',
+				body: new URLSearchParams({ title, content, known_updated_at: knownUpdatedAt })
+			});
+		} catch {
+			// fetch throws on a dropped connection rather than resolving —
+			// treat that the same as the navigator.onLine check above.
+			status = 'offline';
+			return;
+		}
 
-		status = res.ok ? 'saved' : 'error';
-		if (res.ok) await invalidate('app:notes');
+		if (res.status === 409) {
+			const result: ActionResult = deserialize(await res.text());
+			const serverUpdatedAt =
+				result.type === 'failure' ? (result.data?.updated_at as string | undefined) : undefined;
+			conflict = { serverUpdatedAt: serverUpdatedAt ?? knownUpdatedAt };
+			status = 'error';
+			return;
+		}
+
+		if (!res.ok) {
+			status = 'error';
+			return;
+		}
+
+		const result: ActionResult = deserialize(await res.text());
+		if (result.type === 'success') {
+			knownUpdatedAt = (result.data?.updated_at as string | undefined) ?? knownUpdatedAt;
+		}
+		status = 'saved';
+		clearDraft(note.id);
+		await invalidate('app:notes');
 	}
 
 	const scheduleSave = debounce(save, 800);
 
 	function onInput() {
-		status = 'idle';
+		if (draftEligible) saveDraft(note.id, title, content);
+		conflict = null;
+		status = navigator.onLine ? 'idle' : 'offline';
 		scheduleSave();
+	}
+
+	// Keep saving after the reconnect instead of leaving the last edits
+	// stranded until the user happens to type again.
+	$effect(() => {
+		if (!draftEligible) return;
+		const onReconnect = () => scheduleSave();
+		window.addEventListener('online', onReconnect);
+		return () => window.removeEventListener('online', onReconnect);
+	});
+
+	function forceOverwrite() {
+		if (!conflict) return;
+		knownUpdatedAt = conflict.serverUpdatedAt;
+		conflict = null;
+		scheduleSave();
+	}
+
+	function discardLocalAndReload() {
+		clearDraft(note.id);
+		window.location.reload();
 	}
 
 	// A pending timer must not survive a note switch: {#key data.note.id}
@@ -223,8 +332,12 @@
 	<main class="flex min-h-screen flex-col">
 		<header class="grid grid-cols-3 items-center gap-4 border-b border-gray-200 px-6 py-3">
 			<div class="text-sm text-gray-400">
-				{#if status === 'error'}
+				{#if conflict}
+					<span class="text-amber-600">Conflict — not saved.</span>
+				{:else if status === 'error'}
 					<span class="text-red-600">Could not save.</span>
+				{:else if status === 'offline'}
+					<span class="text-amber-600">Offline — draft saved locally</span>
 				{:else if status === 'saving'}
 					<span>Saving…</span>
 				{:else if status === 'saved'}
@@ -363,5 +476,62 @@
 			onSubmit={removeLockWithPin}
 			onClose={() => (showRemoveLockPrompt = false)}
 		/>
+	{/if}
+
+	{#if restorableDraft}
+		<Modal onClose={discardDraft}>
+			<div class="flex flex-col items-center gap-4 text-center">
+				<h1 class="text-lg font-semibold tracking-tight">Restore local draft?</h1>
+				<p class="text-sm text-gray-500">
+					A draft saved locally on {new Date(restorableDraft.savedAt).toLocaleString()} is newer than
+					what's on the server. Restore it, or keep the saved version.
+				</p>
+				<div class="flex gap-2">
+					<button
+						type="button"
+						onclick={discardDraft}
+						class="rounded-md px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-100"
+					>
+						Keep server version
+					</button>
+					<button
+						type="button"
+						onclick={restoreDraft}
+						class="rounded-md bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-700"
+					>
+						Restore draft
+					</button>
+				</div>
+			</div>
+		</Modal>
+	{/if}
+
+	{#if conflict}
+		<Modal>
+			<div class="flex flex-col items-center gap-4 text-center">
+				<h1 class="text-lg font-semibold tracking-tight">This note changed elsewhere</h1>
+				<p class="text-sm text-gray-500">
+					It looks like this note was edited from another device since you opened it here. Saving
+					now would overwrite that change. Reload to see the latest version, or overwrite it with
+					what you have here.
+				</p>
+				<div class="flex gap-2">
+					<button
+						type="button"
+						onclick={discardLocalAndReload}
+						class="rounded-md px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-100"
+					>
+						Reload
+					</button>
+					<button
+						type="button"
+						onclick={forceOverwrite}
+						class="rounded-md bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-500"
+					>
+						Overwrite anyway
+					</button>
+				</div>
+			</div>
+		</Modal>
 	{/if}
 {/if}

@@ -371,18 +371,18 @@ menggantung selamanya di daftar filter sidebar walau sudah tidak relevan.
 
 ---
 
-## Fase 6 — Auto-save & Offline Draft
+## Fase 6 — Auto-save & Offline Draft ✅
 
 **Tujuan:** tidak ada ketikan yang hilang.
 
-- [ ] Debounce auto-save 800ms setelah berhenti mengetik
-- [ ] Indikator status: `Saving…` / `Saved` / `Offline — draft tersimpan lokal`
-- [ ] Simpan draft ke `localStorage` pada tiap perubahan
-- [ ] Saat load note: kalau draft lokal lebih baru dari `updated_at` server,
+- [x] Debounce auto-save 800ms setelah berhenti mengetik (sudah ada dari Fase 3)
+- [x] Indikator status: `Saving…` / `Saved` / `Offline — draft tersimpan lokal`
+- [x] Simpan draft ke `localStorage` pada tiap perubahan
+- [x] Saat load note: kalau draft lokal lebih baru dari `updated_at` server,
       tawarkan restore — **jangan timpa otomatis**
-- [ ] Deteksi konflik: kalau `updated_at` server berubah sejak load (karena
+- [x] Deteksi konflik: kalau `updated_at` server berubah sejak load (karena
       diedit dari device lain), tampilkan peringatan sebelum menyimpan
-- [ ] Hapus draft lokal setelah berhasil save
+- [x] Hapus draft lokal setelah berhasil save
 
 **Kenapa konflik penting:** ini justru masalah utama yang mau diselesaikan —
 dua device. Kalau MacBook dan Windows sama-sama membuka note yang sama, save
@@ -390,6 +390,48 @@ terakhir bisa menghapus pekerjaan yang lain tanpa jejak.
 
 **Selesai kalau:** matikan network di DevTools → ketik → indikator jadi offline →
 nyalakan lagi → tersimpan. Refresh saat offline → draft masih ada.
+
+### Catatan: deteksi konflik pakai optimistic concurrency di action `update`
+
+Client mengirim `known_updated_at` (nilai `updated_at` terakhir yang ia lihat)
+tiap kali save. Server bandingkan dengan `updated_at` sekarang di database
+**sebelum** menulis — kalau beda, berarti device lain sudah menyimpan duluan,
+dan action balik `fail(409, ...)` alih-alih menimpa. Client menerima
+`updated_at` server yang baru lewat body 409, ditampilkan di modal
+"Overwrite anyway" / "Reload" — tidak ada jalur yang menimpa diam-diam.
+
+Ini butuh satu `select` tambahan sebelum `update` (bukan cukup mengandalkan
+`updated_at` yang dikembalikan `update` itu sendiri), karena PostgREST tidak
+punya `UPDATE ... WHERE updated_at = ...` lewat query builder — filter
+kesetaraan pada `updated_at` di klausa `.eq()` sebelum `.update()` akan jadi
+race yang sama persis dengan yang mau dicegah (read-then-write tanpa lock).
+Trade-off yang diterima: satu round-trip ekstra demi menghindari korupsi data
+diam-diam, bukan soal performa.
+
+### Catatan: draft localStorage mengikuti status unlock, bukan `is_locked` mentah
+
+Selama note terkunci masih *tergate* (PIN belum dimasukkan di sesi ini),
+draft tidak pernah ditulis ke `localStorage` — konsisten dengan aturan lock
+note di Fase 3: content note locked tidak pernah keluar dari server dalam
+bentuk plaintext kecuali lewat action `unlock` yang terverifikasi PIN.
+
+Begitu PIN benar dan note ter-unlock, draft **diaktifkan** untuk sisa sesi
+itu — content saat itu sudah plaintext di editor (dan di memori JS) juga,
+jadi menuliskannya ke `localStorage` tidak membuka exposure baru, dan user
+tetap dapat perlindungan anti-kehilangan ketikan yang sama seperti note
+biasa. `draftEligible` di `NoteEditor.svelte` karena itu adalah `$derived`
+dari `isUnlocked` (state sesi, dari `sessionStorage`), bukan `is_locked`
+langsung dari database — begitu note dikunci ulang atau tab ditutup
+(`sessionStorage` hilang), draft berhenti ditulis lagi.
+
+### Catatan: belum divalidasi manual di browser
+
+`npm run check` dan `npm run lint` bersih, tapi skenario offline di
+"Selesai kalau" (matikan network, refresh saat offline, dua tab untuk
+memicu conflict) belum dites langsung di browser pada sesi ini — perlu
+login ke akun owner Supabase asli yang tidak tersedia untuk AI assistant.
+Tes manual ini masih harus dilakukan sebelum menganggap fase ini benar-benar
+tuntas.
 
 ---
 

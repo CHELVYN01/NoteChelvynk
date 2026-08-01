@@ -56,6 +56,7 @@ export const actions: Actions = {
 		const formData = await request.formData();
 		const title = formData.get('title');
 		const content = formData.get('content');
+		const knownUpdatedAt = formData.get('known_updated_at');
 
 		if (typeof title !== 'string' || typeof content !== 'string') {
 			return fail(400, { error: 'Invalid form data.' });
@@ -67,18 +68,44 @@ export const actions: Actions = {
 			return fail(400, { error: 'Content is too long.' });
 		}
 
-		const { error: dbError } = await locals.supabase
+		// Optimistic concurrency check: the client sends back the updated_at it
+		// last saw. If the row moved on since then (edited from another device),
+		// reject the write here instead of silently overwriting whatever the
+		// other device saved — this is the exact scenario this phase guards.
+		if (typeof knownUpdatedAt === 'string' && knownUpdatedAt) {
+			const { data: current, error: fetchError } = await locals.supabase
+				.from('notes')
+				.select('updated_at')
+				.eq('id', params.id)
+				.eq('user_id', user.id)
+				.single();
+
+			if (fetchError || !current) {
+				return fail(404, { error: 'Note not found.' });
+			}
+
+			if (current.updated_at !== knownUpdatedAt) {
+				return fail(409, {
+					error: 'This note was changed elsewhere since you loaded it.',
+					updated_at: current.updated_at
+				});
+			}
+		}
+
+		const { data: updated, error: dbError } = await locals.supabase
 			.from('notes')
 			.update({ title: title.trim() || 'Untitled', content })
 			.eq('id', params.id)
-			.eq('user_id', user.id);
+			.eq('user_id', user.id)
+			.select('updated_at')
+			.single();
 
-		if (dbError) {
+		if (dbError || !updated) {
 			console.error('failed to update note:', dbError);
 			return fail(500, { error: 'Could not save note.' });
 		}
 
-		return { success: true };
+		return { success: true, updated_at: updated.updated_at };
 	},
 
 	togglePin: async ({ params, request, locals }) => {
