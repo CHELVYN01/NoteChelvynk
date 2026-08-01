@@ -14,6 +14,20 @@ Changelog pekerjaan yang sudah selesai. Terbaru di atas.
 
 ---
 
+[02/08/2026]
+
+- add : CRUD tag (buat, rename, hapus) via form action root, warna dari 7 preset Tailwind (6b3b835)
+- add : TagPicker di halaman note — assign/unassign tag existing atau buat baru sekaligus assign (6b3b835)
+- add : filter daftar note berdasarkan tag di sidebar, state di URL query `?tag=` (6b3b835)
+- add : full-text search via `search_vector`, endpoint `/search` dengan debounce 300ms (6b3b835)
+- add : highlight kata cocok di hasil pencarian pakai `ts_headline` (RPC `search_notes_headline`) (6b3b835)
+- security : RPC search pakai `security invoker` supaya RLS pemanggil tetap berlaku, bukan `definer` (6b3b835)
+- security : snippet note locked tidak pernah dikirim dari endpoint search, konsisten dengan load() biasa (6b3b835)
+- security : `sanitizeHeadline()` — whitelist ketat cuma tag `<b>` sebelum `{@html}` di hasil pencarian (6b3b835)
+- fix : tag yang tidak lagi dipakai note manapun dihapus otomatis di server, bukan menggantung kosong di daftar filter (6b3b835)
+
+---
+
 [01/08/2026]
 
 - add : editor markdown CodeMirror 6, highlight code block per bahasa (9c47f50)

@@ -315,16 +315,16 @@ history.
 
 ---
 
-## Fase 5 — Tag & Pencarian
+## Fase 5 — Tag & Pencarian ✅
 
 **Tujuan:** note bisa ditandai dan dicari isinya.
 
-- [ ] CRUD tag (buat, rename, hapus, warna)
-- [ ] Tag picker di halaman note
-- [ ] Filter daftar note berdasarkan tag
-- [ ] Search bar → full-text search via `search_vector`
-- [ ] Highlight kata yang cocok di hasil pencarian (`ts_headline`)
-- [ ] Debounce input pencarian ~300ms
+- [x] CRUD tag (buat, rename, hapus, warna)
+- [x] Tag picker di halaman note
+- [x] Filter daftar note berdasarkan tag
+- [x] Search bar → full-text search via `search_vector`
+- [x] Highlight kata yang cocok di hasil pencarian (`ts_headline`)
+- [x] Debounce input pencarian ~300ms
 
 **Query pencarian:**
 
@@ -339,6 +339,35 @@ supabase
 
 **Selesai kalau:** cari kata yang ada di isi note → note muncul. Klik tag →
 daftar terfilter.
+
+### Catatan: highlight pencarian butuh RPC function, bukan `.textSearch()` biasa
+
+`ts_headline()` (potongan teks dengan kata kunci di-bold) tidak bisa
+diekspresikan lewat builder PostgREST `.textSearch()` — itu cuma memfilter,
+tidak memotong/menandai teks. Ditambahkan satu Postgres function,
+`search_notes_headline()`, di migration
+`supabase/migrations/20260802000000_add_search_headline.sql`, dipanggil lewat
+`locals.supabase.rpc(...)` dari endpoint `src/routes/search/+server.ts`.
+
+Function ini pakai `security invoker` (bukan `definer`) supaya RLS pemanggil
+tetap berlaku — kalau pakai `definer`, function akan jalan dengan privilege
+pemiliknya dan bisa membaca note siapa saja, melewati RLS sepenuhnya.
+
+Snippet hasil `ts_headline` menyisipkan tag `<b>` untuk highlight — itu tetap
+teks dari isi note milik user, jadi tetap disanitasi lewat `sanitizeHeadline()`
+(whitelist cuma `<b>`) sebelum `{@html}` di `Sidebar.svelte`, konsisten dengan
+aturan sanitasi HTML di CLAUDE.md. Note yang `is_locked` tidak pernah
+mengembalikan snippet asli dari endpoint search — sama seperti aturan
+`load()` biasa, hanya action `unlock` yang boleh mengirim content asli.
+
+### Catatan: tag dihapus otomatis kalau tidak dipakai note manapun
+
+Tag di app ini dibuat ad-hoc dari tag picker (bukan kategori predefined).
+Begitu note terakhir yang memakai suatu tag di-unassign (action `removeTag`
+di `src/routes/note/[id]/+page.server.ts`), server mengecek apakah tag itu
+masih dipakai note lain — kalau tidak, tag dihapus langsung dari tabel `tags`.
+Ini keputusan sadar (bukan default Supabase): tanpa ini, tag kosong akan
+menggantung selamanya di daftar filter sidebar walau sudah tidak relevan.
 
 ---
 
