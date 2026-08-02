@@ -583,6 +583,52 @@ sekalipun cuma untuk fungsi sesederhana whitelist satu tag, membawa seluruh
 masalah dependency itu ke setiap route, bukan cuma route yang benar-benar
 memakainya.
 
+### Catatan: `/note/[id]` masih 500 setelah perbaikan Sidebar — jsdom sendiri yang tidak kompatibel dengan Vercel, bukan cuma soal bundling
+
+Setelah perbaikan di atas, `/login` dan `/` sudah normal, tapi membuka note
+(`/note/[id]`) — yang memang butuh `renderMarkdown()` penuh via
+`MarkdownPreview.svelte` — masih 500 dengan error `ERR_REQUIRE_ESM` yang sama
+(`@asamuzakjp/css-color` vs `@csstools/css-calc`). Ini konsisten di jsdom versi
+apa pun yang dicek (27.x, 29.x, 30.x) karena semuanya menarik
+`@asamuzakjp/css-color` — override versi tidak akan pernah menuntaskan ini,
+masalahnya ada di `jsdom` itu sendiri yang tidak kompatibel dengan cara
+Vercel/`adapter-vercel` (Rolldown) mem-bundle serverless function untuk
+kombinasi CJS `require()` terhadap dependency ESM murni.
+
+**Opsi yang dicoba dan ditolak: `dompurify` (bukan `isomorphic-dompurify`) +
+`linkedom`.** `linkedom` jauh lebih ringan dari `jsdom` dan tidak menyentuh
+`css-color` sama sekali — di atas kertas terlihat seperti solusi bersih. Tapi
+diuji langsung (bukan cuma dibaca dokumentasinya) di direktori terpisah
+sebelum dipasang ke project, dan ditemukan dua masalah nyata:
+
+1. `linkedom`'s `Window` tidak mengimplementasikan `NodeFilter`, yang dipakai
+   `DOMPurify` secara internal (11 referensi di source-nya).
+2. `require('dompurify')` **sendiri** (module-level, sebelum sempat dipakai
+   sama sekali) throw `ReferenceError: window is not defined` kalau
+   `linkedom` di-`require()` lebih dulu di process yang sama — bug urutan-
+   import yang tidak reliable untuk diandalkan di production.
+
+**Solusi yang dipakai: sanitasi HTML markdown hanya di browser, tidak pernah
+di server.** `renderMarkdown()` di `src/lib/utils/markdown.ts` sekarang
+mengembalikan `string | null` — `null` saat dipanggil di server (`browser`
+dari `$app/environment` bernilai `false`), string hasil sanitasi penuh saat
+di client. `MarkdownPreview.svelte` menampilkan "Loading preview…" untuk
+kasus `null`, dan baru merender `{@html html}` setelah hydration selesai dan
+`renderMarkdown()` benar-benar jalan dengan `window` browser asli — bukan
+`window` sintetis apa pun. Ini menghilangkan kebutuhan DOM-di-Node sama
+sekali untuk fitur ini: `DOMPurify` versi browser sudah teruji luas dan tidak
+butuh polyfill.
+
+**Trade-off yang diterima secara sadar:** preview markdown tidak lagi
+ter-render di response HTML awal dari server (kilat pertama render adalah
+placeholder, bukan konten). Untuk app note pribadi dengan traffic super
+rendah, ini bukan masalah SEO/performa yang berarti — dampaknya cuma
+sepersekian detik delay sebelum preview muncul, dan hanya di pane preview,
+bukan di editor (isi note tetap ada dari awal, cuma live-preview HTML-nya
+yang menyusul). Dependency `isomorphic-dompurify` dan `overrides.jsdom` yang
+sempat ditambahkan sepenuhnya dicabut dari `package.json` — diganti
+`dompurify` polos.
+
 ---
 
 ## Roadmap (setelah v1)

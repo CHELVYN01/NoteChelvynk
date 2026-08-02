@@ -200,6 +200,23 @@ Tanggal `DD/MM/YYYY`, terbaru di atas. Selalu sertakan 7 karakter pertama hash c
 - Commit `.env` atau nilai key apa pun
 - Menambah fitur yang tidak ada di [PLAN.md](PLAN.md)
 
+### Eksekusi selalu di tangan user
+
+AI assistant di repo ini **hanya menulis dan menyiapkan kode** — tidak pernah
+menjalankan perintah eksekusi apa pun sendiri (`npm run dev`, `npm run build`,
+`npm install`, `git push`, deploy, migration, dsb). Semua perintah yang
+menjalankan/mengubah sesuatu di luar mengedit file harus dijalankan oleh user
+sendiri di terminalnya. AI boleh **menyarankan** perintah persis yang perlu
+dijalankan (dengan penjelasan kenapa), tapi keputusan dan eksekusinya di
+tangan user sepenuhnya — ini soal kemitraan kerja, bukan cuma soal keamanan.
+
+**Alasan:** debugging deploy Vercel Fase 7 (02/08/2026) berputar-putar karena
+AI menjalankan `npm install`, mengubah `vite.config.ts` bolak-balik, dan
+membuat asumsi soal apa yang "sudah pernah dites" tanpa user yang benar-benar
+mengonfirmasi tiap langkah — user harus terus-menerus mengoreksi ("sudah
+pernah deploy dari fase 1", "masih error", dst) karena AI mengeksekusi
+duluan lalu baru bertanya, bukan sebaliknya.
+
 ---
 
 ## Bahasa
